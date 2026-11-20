@@ -387,7 +387,7 @@ async function search(lang,name,num,total){
     }catch{}
   }
   let out=[...found.values()].map(c=>({id:c.id,name:c.name,localId:c.localId,image:c.image,setName:c.set&&c.set.name,official:c.set&&c.set.cardCount&&c.set.cardCount.official,lang}));
-  if(name){const n=name.toLowerCase();out.sort((a,b)=>score(b.name,n)-score(a.name,n))}
+  if(name){const n=name.toLowerCase();out.sort((a,b)=>score(b.name,n)-score(a.name,n));if(lang==='en'&&out.some(c=>score(c.name,n)>0))out=out.filter(c=>score(c.name,n)>0)}
   return out;
 }
 function score(cn,n){cn=(cn||'').toLowerCase();if(cn===n)return 3;if(cn.startsWith(n))return 2;if(cn.includes(n))return 1;return 0}
