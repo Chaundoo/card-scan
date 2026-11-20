@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
 // @match        https://chaundoo.github.io/card-scan/*
 // @match        https://www.tcgplayer.com/product/*
@@ -15,7 +15,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.0.0';
+  const VER = '1.0.1';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -79,14 +79,17 @@
   async function waitFor(sel, ms) { const t = Date.now(); while (Date.now() - t < ms) { const el = document.querySelector(sel); if (el) return el; await sleep(250); } return null; }
   async function readTcg() {
     status('Reading TCGplayer…');
-    await waitFor('.price-guide__points, .listing-item', 15000);
+    await waitFor('.price-guide__points', 15000);
+    await waitFor('.listing-item', 8000);
+    await waitFor('.price-guide__latest-sales .modal__activator', 6000);
+    await sleep(600);
     const rowVal = (root, label) => { for (const tr of (root || document).querySelectorAll('tr')) { const td = tr.querySelectorAll('td'); if (td.length >= 2 && txt(td[0]).startsWith(label)) return num(txt(td[1])); } return null; };
     const pts = document.querySelector('.price-guide__points-container') || document;
     const out = { market: rowVal(pts, 'Market Price'), recent: rowVal(pts, 'Most Recent Sale'), condLabel: txt(document.querySelector('.price-guide__points-condition')), sales: [], listings: [] };
     // open the sales history snapshot (same as tapping "View More Data")
     let rowsEl = document.querySelector('.latest-sales-table__tbody tr');
     if (!rowsEl) {
-      const btn = [...document.querySelectorAll('button')].find(b => /View More Data/i.test(txt(b)));
+      const btn = document.querySelector('.price-guide__latest-sales .modal__activator') || [...document.querySelectorAll('button, .modal__activator, a')].find(b => /View More Data/i.test(b.textContent || ''));
       if (btn) { btn.click(); rowsEl = await waitFor('.latest-sales-table__tbody tr', 8000); }
     }
     for (const tr of document.querySelectorAll('.latest-sales-table__tbody tr')) {
