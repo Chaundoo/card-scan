@@ -342,9 +342,9 @@ function parseOCR(bottom,top,all){
   // name: first good line from the top strip
   const lines=(top+'\n'+all).split(/\n/).map(l=>l.trim()).filter(Boolean);
   for(const l of lines){
-    const words=l.replace(/[^A-Za-zé'’\- ]/g,' ').split(/\s+/).filter(Boolean);
+    const words=l.replace(/([A-Z]{2,})([A-Z][a-z])/g,'$1 $2').replace(/[^A-Za-zé'’\- ]/g,' ').split(/\s+/).filter(Boolean);
     const good=words.filter(w=>!STOP.has(w.toUpperCase().replace(/[^A-ZÉ]/g,'')));
-    const main=good.find(w=>w.length>=4&&/^[A-Z]/.test(w));
+    const main=good.find(w=>w.length>=4&&/^[A-Z][a-zé'’\-]{3,}/.test(w));
     if(main){const i=good.indexOf(main);let n=main;const nx=good[i+1];if(nx&&/^(ex|EX|GX|V|VMAX|VSTAR|BREAK|LV|Prime)$/.test(nx))n+=' '+nx;r.name=S.lang==='ja'?'':n;break}
   }
   return r;
