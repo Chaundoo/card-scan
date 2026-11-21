@@ -319,7 +319,7 @@ async function getSets(lang){
   ls.set('sets.'+lang,{at:Date.now(),sets});setCache[lang]=sets;return sets;
 }
 const normNum=n=>String(n||'').toUpperCase().replace(/\s/g,'').replace(/^([A-Z-]*)0*(\d)/,'$1$2');
-const imgUrl=(img,q='low')=>img?img+'/'+q+'.webp':null;
+const imgUrl=(img,q='low')=>!img?null:/\.(png|jpe?g|webp)$/i.test(img)?img:img+'/'+q+'.webp';
 
 /* ---------- OCR ---------- */
 let workerP=null,ocrLogger=null;
@@ -542,7 +542,7 @@ async function pictureMatch(src,isCropped,lang){
   const order=[...best.keys()].sort((a,b)=>best[b]-best[a]).slice(0,40);
   const sets=await getSets(lang).catch(()=>[]);const sb=Object.fromEntries(sets.map(s=>[s.id,s]));
   return order.map(i=>{const [id,name,localId,img]=meta[i];const sid=id.slice(0,id.lastIndexOf('-'));const s=sb[sid];
-    return {id,name,localId,image:ASSETS+img,setName:s&&s.name,official:s&&s.cardCount&&s.cardCount.official,lang,sim:best[i]}});
+    return {id,name,localId,image:/^https?:/.test(img)?img:ASSETS+img,setName:s&&s.name,official:s&&s.cardCount&&s.cardCount.official,lang,sim:best[i]}});
 }
 // text read = second opinion: same artwork reprints get sorted by number/name/set total
 function verify(list,r){

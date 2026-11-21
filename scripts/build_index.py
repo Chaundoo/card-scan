@@ -52,12 +52,49 @@ so = ort.SessionOptions(); so.intra_op_num_threads = os.cpu_count() or 4
 sess = ort.InferenceSession(model_path, so, providers=['CPUExecutionProvider'])
 
 def fetch_img(path):
+    if path.startswith('http'):
+        r = get(path, tries=3)
+        try: return Image.open(io.BytesIO(r.content)) if r is not None else None
+        except Exception: return None
     for ext in ('low.webp', 'low.png', 'high.webp'):
         r = get(ASSETS + path + '/' + ext, tries=3)
         if r is not None and r.content:
             try: return Image.open(io.BytesIO(r.content))
             except Exception: pass
     return None
+
+PTCG = 'https://api.pokemontcg.io/v2/'
+def nnum(n): 
+    import re; n = str(n or '').upper().replace(' ', ''); return re.sub(r'^([A-Z-]*)0*(\d)', r'\1\2', n)
+def nname(n):
+    import re; return re.sub(r'[^a-z0-9]', '', (n or '').lower())
+def fill_missing(cards):
+    """TCGdex has no picture for some sets (Galarian Gallery, Shiny Vault, promos...). Borrow pokemontcg.io's."""
+    miss = [c for c in cards if not c.get('image')]
+    if not miss: return
+    r = get(PTCG + 'sets?pageSize=250')
+    if r is None: print('pokemontcg.io sets unavailable'); return
+    psets = r.json()['data']; by_id = {p['id']: p for p in psets}; by_name = {nname(p['name']): p for p in psets}
+    def map_set(st):
+        import re
+        sid = st['id']; cands = [sid, sid.replace('.', 'pt'), sid.replace('.', ''), re.sub(r'([a-z])0+(\d)', r'\1\2', sid).replace('.', 'pt')]
+        for c in cands:
+            if c in by_id: return by_id[c]
+        return by_name.get(nname(st['name']))
+    groups = {}
+    for c in miss: groups.setdefault(c['_set']['id'], []).append(c)
+    filled = 0
+    for sid, cl in groups.items():
+        ps = map_set(cl[0]['_set'])
+        if not ps: continue
+        rr = get(PTCG + 'cards?q=set.id:' + ps['id'] + '&select=number,name,images&pageSize=250')
+        if rr is None: continue
+        pm = {nnum(x['number']): x['images']['small'] for x in rr.json()['data'] if x.get('images')}
+        for c in cl:
+            u = pm.get(nnum(c['localId']))
+            if u: c['image'] = u; filled += 1
+        time.sleep(0.3)
+    print('filled from pokemontcg.io', filled, 'of', len(miss))
 
 all_meta, all_raw = {}, {}
 for lang in LANGS:
@@ -72,8 +109,12 @@ for lang in LANGS:
         r = get(API + lang + '/sets/' + s['id'])
         return (r.json().get('cards') or []) if r is not None else []
     with ThreadPoolExecutor(8) as ex:
-        for cl in ex.map(set_cards, sets): cards += [c for c in cl if c.get('image')]
+        for cl, st in zip(ex.map(set_cards, sets), sets):
+            for c in cl: c['_set'] = st
+            cards += cl
     seen = set(); cards = [c for c in cards if not (c['id'] in seen or seen.add(c['id']))]
+    if lang == 'en': fill_missing(cards)
+    cards = [c for c in cards if c.get('image')]
     print(lang, 'cards with pictures', len(cards))
     todo = [c for c in cards if c['id'] not in cached]
     print(lang, 'new to fingerprint', len(todo))
