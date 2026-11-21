@@ -461,7 +461,17 @@ async function handleCard(canvas,isCropped){
       const okNum=v.some(c=>c.chips.includes('# ✓')),okName=v.some(c=>c.chips.includes('name ✓'));
       const got=[okName&&r.name,okNum&&(r.num+(r.total?' / '+r.total:''))].filter(Boolean).join(' · ');
       if(!okNum){$('#f-num').value='';$('#f-total').value=''}if(!okName)$('#f-name').value='';
-      msg('#scan-msg',(got?'Text check confirmed: '+got+' (✓ on the cards that agree). ':'Text check couldn\'t confirm (small print or glare), so this is by picture only. ')+'Not your card? Scroll the list, or open "Search by name or number" below.','info')}
+      let rescued=false;
+      // the card's text says something none of the picture matches agree with: search by text, sort those by look
+      if(!okNum&&!okName&&(r.name||r.num)){
+        try{const t=await search(lang,r.name||'',r.num||'',r.total&&/^\d+$/.test(r.total)?r.total:(lang==='ja'?r.total||'':''));
+          if(t.length){const tl=t.slice(0,24).map(c=>({...c,sim:picSim(c.lang||lang,c.id),chips:['text match']})).sort((a,b)=>(b.sim??-9)-(a.sim??-9)).slice(0,8);
+            renderMatches(tl.concat(v.filter(x=>!tl.some(y=>y.id===x.id))).slice(0,20),'Best matches');rescued=true;
+            const rd=[r.name,r.num&&(r.num+(r.total?' / '+r.total:''))].filter(Boolean).join(' · ');
+            $('#f-name').value=r.name||'';$('#f-num').value=r.num||'';$('#f-total').value=r.total||'';
+            msg('#scan-msg','The picture wasn\'t sure, but the card reads "'+rd+'". Those matches are first, sorted by how close they look; picture-only matches follow.','info')}}catch{}
+      }
+      if(!rescued)msg('#scan-msg',(got?'Text check confirmed: '+got+' (✓ on the cards that agree). ':'Text check couldn\'t confirm (small print or glare), so this is by picture only. ')+'Not your card? Scroll the list, or open "Search by name or number" below.','info')}
     else fillAndSearch(r);
   }catch(err){$('#ocr-prog').hidden=true;if(!pic)msg('#scan-msg',err.message||'Reading failed','bad')}
 }
@@ -582,6 +592,11 @@ $('#own-save').addEventListener('click',()=>{
   const c={id:'own-'+Date.now(),name,localId:$('#own-num').value.trim(),lang:S.lang,image:thumbOf(lastCard.canvas),setName:'Added by you',custom:true,vecs:lastQs.map(q=>Array.from(q,x=>Math.round(x*1000)/1000))};
   const all=ownAll();all.unshift(c);ls.set('own',all.slice(0,150));$('#own-name').value='';$('#own-num').value='';openCard(c);
 });
+// look-score for one catalog card against the last snap
+function picSim(lang,id){const ix=PM.idx[lang];if(!ix||!lastQs)return null;
+  if(!ix.pos){ix.pos=new Map();ix.meta.forEach((m,i)=>ix.pos.set(m[0],i))}
+  const i=ix.pos.get(id);if(i==null)return null;let best=-9;const o=i*128;
+  for(const q of lastQs){let d=0;for(let j=0;j<128;j++)d+=q[j]*ix.vec[o+j];d/=127;if(d>best)best=d}return best}
 // text read = second opinion: same artwork reprints get sorted by number/name/set total
 function verify(list,r){
   const nm=r.name?normName(r.name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|BREAK)$/,'')):'';
