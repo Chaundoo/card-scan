@@ -145,7 +145,7 @@ samp = X[rng.choice(len(X), min(len(X), 30000), replace=False)] - mu
 _, _, Vt = np.linalg.svd(samp, full_matrices=False)
 W = Vt[:D].T.astype(np.float32)  # 768 x 128
 with open('index/pca.bin', 'wb') as f: f.write(mu.astype(np.float32).tobytes()); f.write(W.tobytes())
-info = {'model': MODEL_URL, 'dims': D, 'built': time.strftime('%Y-%m-%d'), 'counts': {}}
+info = {'model': MODEL_URL, 'dims': D, 'built': time.strftime('%Y-%m-%dT%H%M'), 'counts': {}}
 for lang in all_raw:
     P = (all_raw[lang] - mu) @ W
     P /= np.linalg.norm(P, axis=1, keepdims=True) + 1e-8
