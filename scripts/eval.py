@@ -4,7 +4,7 @@ from PIL import Image
 import importlib.util, sys
 RAW = 'https://raw.githubusercontent.com/Chaundoo/card-scan/test-assets/'
 TESTS = [('mew.jpg', 'bw11-RC24', 'en'), ('gg10.jpg', 'swsh12.5gg-GG10', 'en'), ('wotc.jpg', 'basep-8', 'en'),
-         ('tenta.jpg', 'ecard2-H26', 'en'), ('giratina.jpg', 'sm8-97', 'en')]
+         ('tenta.jpg', 'ecard2-H26', 'en'), ('giratina.jpg', 'sm8-97', 'en'), ('darkzard_jp.jpg', 'base5-4', 'en')]
 MEAN = np.array([0.485, 0.456, 0.406], np.float32); STD = np.array([0.229, 0.224, 0.225], np.float32)
 ART = json.load(open('index/info.json'))['art']
 sess = ort.InferenceSession('cache/model_quantized.onnx', providers=['CPUExecutionProvider'])
@@ -31,9 +31,11 @@ for fn, want, lang in TESTS:
     if want not in ids: print(fn, 'not in index'); continue
     t = ids.index(want)
     qf = proj(feats(sess.run(None, {'pixel_values': np.stack([prep(crop(im, *c)) for c in CROPS])})[0]), mu, W)
-    arts = [crop(crop(im, *c), *ART) for c in CROPS]
+    WINDOWS = [tuple(ART), (.08, .14, .84, .40), (.10, .18, .80, .38), (.12, .22, .76, .36)]  # art sits lower on old Japanese cards
+    arts = [crop(crop(im, *c), *w) for c in CROPS for w in WINDOWS]
     qa = proj(feats(sess.run(None, {'pixel_values': np.stack([prep(a) for a in arts])})[0]), mua, Wa)
     sf = (full @ qf.T).max(1); sa = (art @ qa.T).max(1)
     def rank(s): return int((s > s[t]).sum()) + 1
-    combos = {'full': sf, 'art': sa, 'avg': (sf + sa) / 2, 'w.6art': .4 * sf + .6 * sa}
+    sa1 = (art @ qa[::len(WINDOWS)].T).max(1)  # fixed window only
+    combos = {'full': sf, 'art1': sa1, 'artN': sa, 'avg1': (sf + sa1) / 2, 'avgN': (sf + sa) / 2, 'w.6artN': .4 * sf + .6 * sa}
     print(fn, ' | '.join(f'{k}: #{rank(v)} ({v[t]:.2f})' for k, v in combos.items()))

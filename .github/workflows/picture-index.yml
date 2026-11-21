@@ -2,7 +2,7 @@ name: Build picture index
 on:
   workflow_dispatch:
   push:
-    paths: ['scripts/build_index.py', '.github/workflows/picture-index.yml']
+    paths: ['scripts/build_index.py', 'scripts/eval.py', '.github/workflows/picture-index.yml']
   schedule:
     - cron: '23 10 * * 2'   # weekly, picks up new sets
 permissions:

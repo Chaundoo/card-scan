@@ -25,7 +25,7 @@ STD = np.array([0.229, 0.224, 0.225], np.float32)
 os.makedirs('index', exist_ok=True); os.makedirs('cache', exist_ok=True)
 S = requests.Session(); S.headers['User-Agent'] = 'chaundoo-card-scan-index (github.com/Chaundoo/card-scan)'
 
-def get(url, tries=4, **kw):
+def get(url, tries=6, **kw):
     for i in range(tries):
         try:
             r = S.get(url, timeout=30, **kw)
@@ -33,7 +33,7 @@ def get(url, tries=4, **kw):
             r.raise_for_status(); return r
         except Exception as e:
             if i == tries - 1: print('  fail', url, e); return None
-            time.sleep(2 * (i + 1))
+            time.sleep(3 * (i + 1))
 
 def prep(im):
     im = im.convert('RGB').resize((224, 224), Image.BILINEAR)
@@ -58,11 +58,11 @@ sess = ort.InferenceSession(model_path, so, providers=['CPUExecutionProvider'])
 
 def fetch_img(path):
     if path.startswith('http'):
-        r = get(path, tries=3)
+        r = get(path, tries=5)
         try: return Image.open(io.BytesIO(r.content)) if r is not None else None
         except Exception: return None
     for ext in ('low.webp', 'low.png', 'high.webp'):
-        r = get(ASSETS + path + '/' + ext, tries=3)
+        r = get(ASSETS + path + '/' + ext, tries=5)
         if r is not None and r.content:
             try: return Image.open(io.BytesIO(r.content))
             except Exception: pass
@@ -120,7 +120,18 @@ for lang in LANGS:
             for c in cl: c['_set'] = st
             cards += cl
     seen = set(); cards = [c for c in cards if not (c['id'] in seen or seen.add(c['id']))]
+    known = {}
+    for kf in (f'scripts/known_images_{lang}.json', f'cache/known_images_{lang}.json'):
+        if os.path.exists(kf): known.update(json.load(open(kf)))
+    if os.path.exists(f'index/{lang}.json'):
+        for m in json.load(open(f'index/{lang}.json')): known.setdefault(m[0], m[3])
     if lang == 'en': fill_missing(cards)
+    for c in cards:
+        if not c.get('image') and c['id'] in known:
+            k = known[c['id']]; c['image'] = k if k.startswith('http') else ASSETS + k
+    for c in cards:
+        if c.get('image'): known[c['id']] = c['image'].replace(ASSETS, '')
+    json.dump(known, open(f'cache/known_images_{lang}.json', 'w'), separators=(',', ':'))
     cards = [c for c in cards if c.get('image') and '/tcgp/' not in c['image']]  # skip TCG Pocket (digital only)
     print(lang, 'cards with pictures', len(cards))
     todo = [c for c in cards if c['id'] not in cached or c['id'] not in cached_a]
@@ -129,7 +140,7 @@ for lang in LANGS:
         np.savez(cache_f, ids=np.array(list(cached.keys()), dtype=object), vecs=np.stack(list(cached.values())))
         np.savez(cache_a, ids=np.array(list(cached_a.keys()), dtype=object), vecs=np.stack(list(cached_a.values())))
     t0 = time.time()
-    with ThreadPoolExecutor(16) as ex:
+    with ThreadPoolExecutor(8) as ex:
         for b in range(0, len(todo), 32):
             batch = todo[b:b + 32]
             imgs = list(ex.map(lambda c: fetch_img(c['image'].replace(ASSETS, '')), batch))
@@ -142,13 +153,13 @@ for lang in LANGS:
             if (b // 32) % 20 == 0:
                 print(f'  {lang} {b + len(batch)}/{len(todo)}  {time.time() - t0:.0f}s', flush=True); save()
     if cached: save()
-    meta = [[c['id'], c['name'], c['localId'], c['image'].replace(ASSETS, '')] for c in cards if c['id'] in cached and c['id'] in cached_a]
+    meta = [[c['id'], c['name'], c['localId'], c['image'].replace(ASSETS, '')] for c in cards if c['id'] in cached]
     all_meta[lang] = meta
     all_raw[lang] = np.stack([cached[m[0]].astype(np.float32) for m in meta])
-    all_art[lang] = np.stack([cached_a[m[0]].astype(np.float32) for m in meta])
+    all_art[lang] = np.stack([cached_a[m[0]].astype(np.float32) if m[0] in cached_a else np.full(768, np.nan, np.float32) for m in meta])
 
 def fit(raws, path):
-    X = np.concatenate(list(raws.values())); mu = X.mean(0)
+    X = np.concatenate(list(raws.values())); X = X[~np.isnan(X).any(1)]; mu = X.mean(0)
     rng = np.random.default_rng(0)
     samp = X[rng.choice(len(X), min(len(X), 30000), replace=False)] - mu
     _, _, Vt = np.linalg.svd(samp, full_matrices=False)
@@ -156,8 +167,10 @@ def fit(raws, path):
     with open(path, 'wb') as f: f.write(mu.astype(np.float32).tobytes()); f.write(W.tobytes())
     return mu, W
 def write(raw, mu, W, path):
+    bad = np.isnan(raw).any(1); raw = np.nan_to_num(raw)
     P = (raw - mu) @ W
     P /= np.linalg.norm(P, axis=1, keepdims=True) + 1e-8
+    P[bad] = 0  # no artwork fingerprint: the site falls back to the whole-card score
     open(path, 'wb').write(np.clip(np.round(P * 127), -127, 127).astype(np.int8).tobytes())
 mu, W = fit(all_raw, 'index/pca.bin'); mua, Wa = fit(all_art, 'index/pca_art.bin')
 info = {'model': MODEL_URL, 'dims': D, 'built': time.strftime('%Y-%m-%dT%H%M'), 'art': list(ART), 'counts': {}}
