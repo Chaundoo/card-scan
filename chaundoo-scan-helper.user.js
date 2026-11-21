@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.0.1
+// @version      1.1.0
+// @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
+// @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
 // @match        https://chaundoo.github.io/card-scan/*
 // @match        https://www.tcgplayer.com/product/*
@@ -15,7 +17,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.0.1';
+  const VER = '1.1.0';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -134,7 +136,19 @@
       items.push({ title, price, ship: /free (shipping|delivery)/i.test(t) ? 0 : (sm ? num(sm[1]) : 0), date: dm ? dm[1] : null, img: img ? (img.currentSrc || img.src || img.getAttribute('data-src') || '') : '', url: a ? a.href.split('?')[0] : '' });
       if (items.length >= 40) break;
     }
-    if (!items.length) { status('No results found on this page.'); return; }
+    if (!items.length) {
+      // nothing matched every word: retry once with the numbers/extra codes dropped (name words and exclusions kept)
+      const u = new URL(location.href);
+      if (!u.searchParams.get('ccsRetry')) {
+        const q = u.searchParams.get('_nkw') || '';
+        const looser = q.split(/\s+/).filter(t => t.startsWith('-') || !/[\d()\/]/.test(t)).join(' ');
+        if (looser && looser !== q) {
+          u.searchParams.set('_nkw', looser); u.searchParams.set('ccsRetry', '1');
+          status('No exact matches. Trying a broader search…'); location.replace(u.toString()); return;
+        }
+      }
+      status('No results found on this page.'); return;
+    }
     await save({ items });
   }
 

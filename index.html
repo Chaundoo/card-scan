@@ -707,9 +707,17 @@ function buildPrints(c){
 function ebayQuery(){
   if(card.custom)return card.name+(card.lang==='ja'&&!/japan/i.test(card.name)?' japanese':'')+(card.localId?' '+card.localId:'');
   if(jpTwin){const n=lastRead.num?(lastRead.num+(lastRead.total&&/^\d+$/.test(lastRead.total)?'/'+lastRead.total:'')):'';return [card.name,n,'japanese'].filter(Boolean).join(' ')}
-  const p=prints[pIdx]||{};const parts=[enName||card.name];
+  const p=prints[pIdx]||{};
+  // eBay needs every word in the title, so keep only words sellers actually type
+  const nm=(enName||card.name).replace(/\b(with|the|of)\b/gi,' ').replace(/[-–]/g,' ').replace(/[δ★☆]/g,'').replace(/\s+/g,' ').trim();
+  const parts=[nm];
   const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
-  parts.push(card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''));
+  const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test((card.set&&card.set.id)||'');
+  if(promo){
+    // promos only print the number (085, SWSH050, SM60), never a set total; sellers write it several ways
+    const d=card.localId.replace(/^[A-Z-]+/i,'');const alts=[...new Set([card.localId,d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
+    parts.push('('+alts.join(',')+',promo)');
+  }else parts.push(card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''));
   if(card.lang==='ja')parts.push('japanese');
   if(p.type==='reverse')parts.push('reverse');
   if(p.stamps&&p.stamps.some(s=>/1st/i.test(s)))parts.push('1st edition');
@@ -831,6 +839,9 @@ const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLoc
 const BAD=/\b(psa|bgs|beckett|cgc|sgc|tag|ace|graded|slab|gem mint|lot|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack)\b/i;
 function filterEbay(items){
   let ok=items.filter(r=>r.price>0&&!BAD.test(r.title));
+  // the title must mention the card (eBay pads thin searches with loosely related listings)
+  if(card){const words=((card.custom?card.name:(jpTwin?card.name:(enName||card.name)))).toLowerCase().replace(/\b(with|the|of|japanese|promo)\b/g,' ').split(/[^a-z0-9']+/).filter(w=>w.length>=3);
+    if(words.length){const need=words.slice(0,4);ok=ok.filter(r=>{const t=r.title.toLowerCase();return need.filter(w=>t.includes(w)).length>=Math.ceil(need.length*.75)})}}
   if(card&&card.lang==='en')ok=ok.filter(r=>!/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/i.test(r.title));
   if(card&&card.lang==='ja')ok=ok.filter(r=>!/\b(english|korean|chinese)\b/i.test(r.title));
   const p=prints[pIdx]||{};
@@ -938,7 +949,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.1.0'?' <b>An update (v1.1.0) is available:</b> open the helper script link below again and install it to get smarter eBay retries.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});
