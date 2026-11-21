@@ -96,6 +96,8 @@ a{color:inherit}
 .cam-bar .btn{background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.3);min-width:84px}
 .shutter{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:var(--gold)}
 .preview{cursor:crosshair}
+.pin{border:none;background:transparent;font-size:22px;line-height:1;padding:4px 6px;color:var(--muted)}
+.pin.on{color:var(--gold)}
 .manual summary{font-weight:700;color:var(--muted);padding:4px 0}
 #pm-ready{margin-top:4px}
 /* matches */
@@ -235,6 +237,7 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
         <div class="links" id="c-links"></div>
       </div>
 
+      <div class="panel" id="pins-panel" hidden></div>
       <div class="panel" id="math-panel">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
           <h2 style="margin:0">Buy and flip math</h2>
@@ -696,13 +699,12 @@ function renderCard(){
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   $('#c-q').value=ebayQuery();
   live=liveStore.get(key())||liveLoad(key())||{};liveStore.set(key(),live);document.documentElement.dataset.ccsKey=key();
-  renderQuick();renderLinks();renderSources();renderMath();
+  renderQuick();renderLinks();renderSources();renderMath();renderPins();
 }
 function renderQuick(){
   const p=prints[pIdx]||{};const t=p.tcg;const cm=p.cm;
   const k=[];
   if(t){k.push(['TCG market',money(t.marketPrice)],['TCG low',money(t.lowPrice)],['TCG mid',money(t.midPrice)])}
-  if(cm&&cm.avg30!=null)k.push(['Cardmarket 30d','€'+(+cm.avg30).toFixed(2)]);
   $('#c-quick').innerHTML=k.length?k.map(([a,b])=>`<div class="kv"><span>${a}</span><b>${b}</b></div>`).join('')+`<p class="note" style="grid-column:1/-1;margin:0">Quick prices for this printing, all conditions blended${p.updated?', updated '+new Date(p.updated).toLocaleDateString():''}. Live comps below are sharper.</p>`:'<p class="note" style="grid-column:1/-1;margin:0">No quick price for this printing. Use the live comps below.</p>';
 }
 function renderLinks(){
@@ -761,7 +763,7 @@ function tcgTable(d){
   const lst=(d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)}));
   let h='';
   if(d.market!=null||d.recent!=null)h+=`<div class="kvs" style="margin-bottom:8px"><div class="kv"><span>Market (${esc(d.condLabel||'page filter')})</span><b>${money(d.market)}</b></div><div class="kv"><span>Most recent sale</span><b>${money(d.recent)}</b></div></div>`;
-  if(rows.length)h+=`<table class="t"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td></tr>`).join('')}</table><p class="note">Faded rows are other conditions. Tap a condition above to switch.</p>`;
+  if(rows.length)h+=`<table class="t"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th><th></th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td><td>${pinBtn('tcg',{title:'TCGplayer '+r.cond+(r.note?' – '+r.note:''),price:r.price,date:r.date,cond:r.cond,url:(live.tcg&&live.tcg.url)||''})}</td></tr>`).join('')}</table><p class="note">Faded rows are other conditions. Tap a condition above to switch.</p>`;
   else h+='<p class="note">No sales rows came through. Tap Read again once the TCGplayer page has fully loaded.</p>';
   if(lst.length)h+=`<details style="margin-top:10px"><summary>${lst.length} listings on the page</summary><table class="t" style="margin-top:6px"><tr><th>Cond</th><th>Seller</th><th class="r">Price + ship</th></tr>${lst.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.cond)}</td><td class="sub">${esc(r.seller||'')}</td><td class="r"><b>${money(r.price+(r.ship||0))}</b></td></tr>`).join('')}</table></details>`;
   return h;
@@ -769,8 +771,25 @@ function tcgTable(d){
 function ebayTable(d,s){
   const items=d.items||[];if(!items.length)return'<p class="note">No listings came through.</p>';
   const keep=filterEbay(items).set;
-  return `<table class="t"><tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th></tr>${items.map(r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td></tr>`).join('')}</table><p class="note">Faded rows are left out of the math (graded, lots, wrong language, or far-off prices).</p>`;
+  return `<table class="t"><tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>${items.map((r,i)=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`).join('')}</table><p class="note">Faded rows are left out of the math (graded, lots, wrong language, or far-off prices). Tap ☆ to pin a sale you want to show a vendor.</p>`;
 }
+const itemUrl=u=>/ebay\.com/.test(u)&&!/ul_noapp/.test(u)?u+(u.includes('?')?'&':'?')+'ul_noapp=1#ul_noapp':u;
+/* ---------- pinned comps (kept until you unpin) ---------- */
+const pinCard=()=>card?card.lang+':'+card.id:'';
+const pinId=(src,r)=>src+'|'+(r.url||'')+'|'+r.title+'|'+r.price+'|'+(r.date||'');
+const pinsAll=()=>ls.get('pins',{});
+function isPinned(src,r){const a=pinsAll()[pinCard()]||[];return a.some(p=>p.pid===pinId(src,r))}
+function pinBtn(src,r){const on=isPinned(src,r);return `<button class="pin ${on?'on':''}" data-pin="${esc(src)}" data-row="${esc(JSON.stringify({title:r.title,price:r.price,ship:r.ship||0,date:r.date||'',img:r.img||'',url:r.url||'',cond:r.cond||''}))}" aria-label="${on?'Unpin':'Pin'} this sale">${on?'★':'☆'}</button>`}
+function togglePin(src,r){const a=pinsAll(),k=pinCard();const list=a[k]||[];const id=pinId(src,r);const i=list.findIndex(p=>p.pid===id);
+  if(i>=0)list.splice(i,1);else list.unshift({pid:id,src,...r,pinnedAt:Date.now(),printing:(prints[pIdx]||{}).label||''});
+  if(list.length)a[k]=list;else delete a[k];ls.set('pins',a);renderPins();renderSources()}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-pin]');if(!b)return;e.preventDefault();togglePin(b.dataset.pin,JSON.parse(b.dataset.row))});
+const SRCNAME={ebaySold:'eBay sold',ebayList:'eBay listing',tcg:'TCGplayer sale'};
+function renderPins(){const el=$('#pins-panel');const list=(pinsAll()[pinCard()]||[]);el.hidden=!list.length;if(!list.length){el.innerHTML='';return}
+  const sold=list.filter(p=>p.src!=='ebayList').map(p=>p.price+(p.ship||0));
+  el.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">★ Pinned comps</h2>${sold.length?`<span class="pill pos">Avg sold ${money(sold.reduce((a,b)=>a+b,0)/sold.length)}</span>`:''}</div>
+   <p class="note" style="margin-bottom:8px">Your proof for vendors. Kept until you unpin them (not cleared after 24 hours).</p>
+   <div class="recent">${list.map(p=>`<div class="ritem" style="cursor:default">${p.img?`<img class="thumb" style="width:52px" src="${esc(p.img)}" alt="">`:'<div class="thumb" style="width:52px"></div>'}<div style="min-width:0;flex:1"><div class="ttl">${p.url?`<a href="${esc(itemUrl(p.url))}" target="_blank" rel="noopener">${esc(p.title||p.cond)}</a>`:esc(p.title||p.cond)}</div><div class="sub">${SRCNAME[p.src]||p.src}${p.date?' · '+esc(shortDate(p.date)):''}${p.printing?' · '+esc(p.printing):''}</div></div><div style="text-align:right"><b>${money(p.price)}</b>${p.ship?`<div class="sub">+${money(p.ship)}</div>`:''}<button class="pin on" data-pin="${esc(p.src)}" data-row="${esc(JSON.stringify({title:p.title,price:p.price,ship:p.ship,date:p.date,img:p.img,url:p.url,cond:p.cond}))}" aria-label="Unpin">★</button></div></div>`).join('')}</div>`}
 const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
 const BAD=/\b(psa|bgs|beckett|cgc|sgc|tag|ace|graded|slab|gem mint|lot|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack)\b/i;
 function filterEbay(items){
@@ -876,7 +895,7 @@ function renderMath(){
 /* ---------- recent ---------- */
 function pushRecent(c){let r=ls.get('recent',[]).filter(x=>!(x.id===c.id&&x.lang===c.lang));r.unshift(c);ls.set('recent',r.slice(0,40))}
 function renderRecent(){const r=ls.get('recent',[]);$('#recent').innerHTML=r.length?r.map((c,i)=>{const sm=liveSummary(c.lang+':'+c.id+':');const left=sm?Math.max(1,Math.round((sm.at+LIVE_TTL-Date.now())/36e5)):0;
-  return `<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div style="min-width:0"><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.lang==='ja'?'Japanese':'English'}</div>${sm?`<span class="pill pos" style="margin-top:4px">Comps saved · read ${timeAgo(sm.at)} · clears in ${left}h</span>`:''}</div></button>`}).join(''):'<p class="note">Nothing yet.</p>'}
+  return `<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div style="min-width:0"><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.lang==='ja'?'Japanese':'English'}</div>${(pinsAll()[c.lang+':'+c.id]||[]).length?`<span class="pill warn" style="margin-top:4px;margin-right:4px">★ ${(pinsAll()[c.lang+':'+c.id]||[]).length} pinned</span>`:''}${sm?`<span class="pill pos" style="margin-top:4px">Comps saved · read ${timeAgo(sm.at)} · clears in ${left}h</span>`:''}</div></button>`}).join(''):'<p class="note">Nothing yet.</p>'}
 $('#recent').addEventListener('click',e=>{const b=e.target.closest('.ritem');if(b){const c=ls.get('recent',[])[+b.dataset.i];openCard(c)}});
 $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('live',{});liveStore.clear();renderRecent()});
 
