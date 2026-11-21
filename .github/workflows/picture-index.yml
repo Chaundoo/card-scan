@@ -23,6 +23,7 @@ jobs:
           restore-keys: raw-
       - run: pip install onnxruntime==1.19.2 numpy pillow requests
       - run: python scripts/build_index.py
+      - run: python scripts/eval.py || true
       - name: Commit index
         run: |
           git config user.name "card-scan-bot"

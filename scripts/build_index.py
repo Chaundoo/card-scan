@@ -40,6 +40,11 @@ def prep(im):
     a = (np.asarray(im, np.float32) / 255.0 - MEAN) / STD
     return a.transpose(2, 0, 1)
 
+ART = (0.08, 0.10, 0.84, 0.42)  # artwork window: x, y, w, h (fractions of the card)
+def art_crop(im):
+    im = im.convert('RGB'); W, H = im.size; x, y, w, h = ART
+    return im.crop((int(W * x), int(H * y), int(W * (x + w)), int(H * (y + h))))
+
 def feats(h):  # h: [b,257,384] -> [b,768]  (CLS + mean of patches, each L2-normalised)
     cls = h[:, 0]; pm = h[:, 1:].mean(1)
     cls = cls / np.linalg.norm(cls, axis=1, keepdims=True); pm = pm / np.linalg.norm(pm, axis=1, keepdims=True)
@@ -96,13 +101,15 @@ def fill_missing(cards):
         time.sleep(0.3)
     print('filled from pokemontcg.io', filled, 'of', len(miss))
 
-all_meta, all_raw = {}, {}
+all_meta, all_raw, all_art = {}, {}, {}
 for lang in LANGS:
-    cache_f = f'cache/raw_{lang}.npz'
-    cached = {}
+    cache_f = f'cache/raw_{lang}.npz'; cache_a = f'cache/raw_{lang}_art.npz'
+    cached, cached_a = {}, {}
     if os.path.exists(cache_f):
         z = np.load(cache_f, allow_pickle=True); cached = dict(zip(z['ids'].tolist(), z['vecs']))
-    print(lang, 'cached', len(cached))
+    if os.path.exists(cache_a):
+        z = np.load(cache_a, allow_pickle=True); cached_a = dict(zip(z['ids'].tolist(), z['vecs']))
+    print(lang, 'cached', len(cached), 'art cached', len(cached_a))
     sets = get(API + lang + '/sets').json()
     cards = []
     def set_cards(s):
@@ -116,8 +123,11 @@ for lang in LANGS:
     if lang == 'en': fill_missing(cards)
     cards = [c for c in cards if c.get('image') and '/tcgp/' not in c['image']]  # skip TCG Pocket (digital only)
     print(lang, 'cards with pictures', len(cards))
-    todo = [c for c in cards if c['id'] not in cached]
+    todo = [c for c in cards if c['id'] not in cached or c['id'] not in cached_a]
     print(lang, 'new to fingerprint', len(todo))
+    def save():
+        np.savez(cache_f, ids=np.array(list(cached.keys()), dtype=object), vecs=np.stack(list(cached.values())))
+        np.savez(cache_a, ids=np.array(list(cached_a.keys()), dtype=object), vecs=np.stack(list(cached_a.values())))
     t0 = time.time()
     with ThreadPoolExecutor(16) as ex:
         for b in range(0, len(todo), 32):
@@ -125,32 +135,34 @@ for lang in LANGS:
             imgs = list(ex.map(lambda c: fetch_img(c['image'].replace(ASSETS, '')), batch))
             ok = [(c, im) for c, im in zip(batch, imgs) if im is not None]
             if not ok: continue
-            x = np.stack([prep(im) for _, im in ok])
-            h = sess.run(None, {'pixel_values': x})[0]
-            for (c, _), v in zip(ok, feats(h)): cached[c['id']] = v.astype(np.float16)
+            hf = sess.run(None, {'pixel_values': np.stack([prep(im) for _, im in ok])})[0]
+            ha = sess.run(None, {'pixel_values': np.stack([prep(art_crop(im)) for _, im in ok])})[0]
+            for (c, _), vf, va in zip(ok, feats(hf), feats(ha)):
+                cached[c['id']] = vf.astype(np.float16); cached_a[c['id']] = va.astype(np.float16)
             if (b // 32) % 20 == 0:
-                print(f'  {lang} {b + len(batch)}/{len(todo)}  {time.time() - t0:.0f}s', flush=True)
-                np.savez(cache_f, ids=np.array(list(cached.keys()), dtype=object), vecs=np.stack(list(cached.values())))
-    if cached:
-        np.savez(cache_f, ids=np.array(list(cached.keys()), dtype=object), vecs=np.stack(list(cached.values())))
-    meta = [[c['id'], c['name'], c['localId'], c['image'].replace(ASSETS, '')] for c in cards if c['id'] in cached]
+                print(f'  {lang} {b + len(batch)}/{len(todo)}  {time.time() - t0:.0f}s', flush=True); save()
+    if cached: save()
+    meta = [[c['id'], c['name'], c['localId'], c['image'].replace(ASSETS, '')] for c in cards if c['id'] in cached and c['id'] in cached_a]
     all_meta[lang] = meta
     all_raw[lang] = np.stack([cached[m[0]].astype(np.float32) for m in meta])
+    all_art[lang] = np.stack([cached_a[m[0]].astype(np.float32) for m in meta])
 
-# shared projection (PCA) fitted on all languages
-X = np.concatenate(list(all_raw.values()))
-mu = X.mean(0)
-rng = np.random.default_rng(0)
-samp = X[rng.choice(len(X), min(len(X), 30000), replace=False)] - mu
-_, _, Vt = np.linalg.svd(samp, full_matrices=False)
-W = Vt[:D].T.astype(np.float32)  # 768 x 128
-with open('index/pca.bin', 'wb') as f: f.write(mu.astype(np.float32).tobytes()); f.write(W.tobytes())
-info = {'model': MODEL_URL, 'dims': D, 'built': time.strftime('%Y-%m-%dT%H%M'), 'counts': {}}
-for lang in all_raw:
-    P = (all_raw[lang] - mu) @ W
+def fit(raws, path):
+    X = np.concatenate(list(raws.values())); mu = X.mean(0)
+    rng = np.random.default_rng(0)
+    samp = X[rng.choice(len(X), min(len(X), 30000), replace=False)] - mu
+    _, _, Vt = np.linalg.svd(samp, full_matrices=False)
+    W = Vt[:D].T.astype(np.float32)  # 768 x 128
+    with open(path, 'wb') as f: f.write(mu.astype(np.float32).tobytes()); f.write(W.tobytes())
+    return mu, W
+def write(raw, mu, W, path):
+    P = (raw - mu) @ W
     P /= np.linalg.norm(P, axis=1, keepdims=True) + 1e-8
-    q = np.clip(np.round(P * 127), -127, 127).astype(np.int8)
-    open(f'index/{lang}.bin', 'wb').write(q.tobytes())
+    open(path, 'wb').write(np.clip(np.round(P * 127), -127, 127).astype(np.int8).tobytes())
+mu, W = fit(all_raw, 'index/pca.bin'); mua, Wa = fit(all_art, 'index/pca_art.bin')
+info = {'model': MODEL_URL, 'dims': D, 'built': time.strftime('%Y-%m-%dT%H%M'), 'art': list(ART), 'counts': {}}
+for lang in all_raw:
+    write(all_raw[lang], mu, W, f'index/{lang}.bin'); write(all_art[lang], mua, Wa, f'index/{lang}_art.bin')
     json.dump(all_meta[lang], open(f'index/{lang}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
     info['counts'][lang] = len(all_meta[lang])
 json.dump(info, open('index/info.json', 'w'), indent=1)
