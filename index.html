@@ -441,8 +441,10 @@ async function handleCard(canvas,isCropped){
     const r=await readCardImage(canvas,isCropped);
     $('#f-name').value=r.name||'';$('#f-num').value=r.num||'';$('#f-total').value=r.total||'';
     if(pic){const v=verify(pic,r).slice(0,16);renderMatches(v,'Best picture matches');
-      const got=[r.name,r.num&&(r.num+(r.total?' / '+r.total:''))].filter(Boolean).join(' · ');
-      msg('#scan-msg',(got?'Text check read: '+got+'. Cards with ✓ agree. ':'Text check couldn\'t read the number; going by picture only. ')+'Wrong? Tap your card in the list, or open "Search by name or number" below.','info')}
+      const okNum=v.some(c=>c.chips.includes('# ✓')),okName=v.some(c=>c.chips.includes('name ✓'));
+      const got=[okName&&r.name,okNum&&(r.num+(r.total?' / '+r.total:''))].filter(Boolean).join(' · ');
+      if(!okNum){$('#f-num').value='';$('#f-total').value=''}if(!okName)$('#f-name').value='';
+      msg('#scan-msg',(got?'Text check confirmed: '+got+' (✓ on the cards that agree). ':'Text check couldn\'t confirm (small print or glare), so this is by picture only. ')+'Not your card? Scroll the list, or open "Search by name or number" below.','info')}
     else fillAndSearch(r);
   }catch(err){$('#ocr-prog').hidden=true;if(!pic)msg('#scan-msg',err.message||'Reading failed','bad')}
 }
