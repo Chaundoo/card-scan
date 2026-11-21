@@ -645,6 +645,10 @@ function buildPrints(c){
     if(tp){const k=Object.keys(tp).find(k=>tp[k]&&typeof tp[k]==='object'&&tp[k].marketPrice!=null);if(k)tcg=tp[k]}
     out.push({label,type:v.type,stamps,pid:(v.thirdParty&&v.thirdParty.tcgplayer)||(tcg&&tcg.productId)||null,tcg,cm:v.pricing&&v.pricing.cardmarket,updated:tp&&tp.updated});
   }
+  // card-level TCGplayer prices/IDs: use them when the printing list has none
+  const ctp=c.pricing&&c.pricing.tcgplayer;const ckeys=ctp?Object.keys(ctp).filter(k=>ctp[k]&&typeof ctp[k]==='object'&&'marketPrice' in ctp[k]):[];
+  if(ckeys.length&&out.length&&out.every(p=>!p.pid&&!p.tcg))out.length=0;
+  else if(ckeys.length)for(const p of out)if(!p.pid||!p.tcg){const k=ckeys.find(k=>p.type==='reverse'?/reverse/i.test(k):p.type==='holo'?/holo/i.test(k)&&!/reverse/i.test(k)&&((p.stamps||[]).some(s=>/1st/i.test(s))===/1st/i.test(k)):/normal/i.test(k));if(k){p.tcg=p.tcg||ctp[k];p.pid=p.pid||ctp[k].productId;p.updated=p.updated||ctp.updated}}
   if(!out.length){
     const tp=c.pricing&&c.pricing.tcgplayer;
     if(tp)for(const k of Object.keys(tp))if(tp[k]&&typeof tp[k]==='object'&&'marketPrice' in tp[k])out.push({label:k.replace(/([A-Z])/g,' $1').replace(/^./,x=>x.toUpperCase()),type:/reverse/i.test(k)?'reverse':/holo/i.test(k)?'holo':'normal',stamps:/1st/i.test(k)?['1st Edition']:[],pid:tp[k].productId,tcg:tp[k],cm:c.pricing.cardmarket,updated:tp.updated});
