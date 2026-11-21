@@ -93,6 +93,8 @@ a{color:inherit}
 .cam-bar .btn{background:rgba(0,0,0,.55);color:#fff;border-color:rgba(255,255,255,.3);min-width:84px}
 .shutter{width:74px;height:74px;border-radius:50%;border:5px solid #fff;background:var(--gold)}
 .preview{cursor:crosshair}
+.manual summary{font-weight:700;color:var(--muted);padding:4px 0}
+#pm-ready{margin-top:4px}
 /* matches */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;text-align:left;transition:transform .15s,box-shadow .15s}
@@ -179,10 +181,12 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
         <img id="preview" class="preview" alt="" hidden>
         <div class="sub" id="tap-tip" hidden>Wrong read? Tap the number (or the name) on the picture to zoom in on it.</div>
         <button class="btn primary big" id="snap-btn">📷 Take picture of card</button>
-        <div class="sub" id="snap-tip">Fill the frame with the card, straight on, no glare on the bottom edge. The number at the bottom matters most.</div>
+        <div class="sub" id="snap-tip">Matches by picture, then double-checks the number. Line the card up in the box; cut glare where you can.</div><button class="btn sm" id="pm-ready" hidden>Get picture matcher ready (~27 MB, once; use Wi-Fi)</button>
         <div style="width:100%;max-width:340px" id="ocr-prog" hidden><div class="sub" id="ocr-status">Reading…</div><div class="prog"><i id="ocr-bar"></i></div></div>
       </div>
-      <div class="row" style="margin-top:12px">
+      <div id="pm-status"></div>
+      <details class="manual" id="manual" style="margin-top:12px"><summary>Search by name or number</summary>
+      <div class="row" style="margin-top:10px">
         <label class="field"><span>Name</span><input id="f-name" placeholder="Charizard" autocomplete="off"></label>
         <label class="field" style="flex:0 1 110px"><span>Number</span><input id="f-num" placeholder="4" autocomplete="off" autocapitalize="characters"></label>
         <label class="field" style="flex:0 1 110px"><span id="f-total-lbl">Set total</span><input id="f-total" placeholder="102" autocomplete="off" autocapitalize="characters"></label>
@@ -192,6 +196,7 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
         <button class="btn" id="clear-btn">Clear</button>
       </div>
       <p class="note" id="scan-hint">Number and set total come from the bottom of the card (like 4/102). Promos work too (SWSH050, SM60). Name alone also works.</p>
+      </details>
       <div id="scan-msg"></div>
     </div>
     <div id="matches-wrap" hidden>
@@ -425,12 +430,21 @@ $('#cam').addEventListener('change',async e=>{
   handleCard(c,false);
 });
 async function handleCard(canvas,isCropped){
-  lastCard={canvas,isCropped};
-  const pv=$('#preview');pv.src=canvas.toDataURL('image/jpeg',.85);pv.hidden=false;$('#tap-tip').hidden=false;msg('#scan-msg','');
+  lastCard={canvas,isCropped};const lang=S.lang;
+  const pv=$('#preview');pv.src=canvas.toDataURL('image/jpeg',.85);pv.hidden=false;$('#tap-tip').hidden=false;msg('#scan-msg','');pmStatus('');
+  let pic=null;
+  try{await loadPM(lang);$('#ocr-prog').hidden=false;$('#ocr-status').textContent='Matching the picture…';$('#ocr-bar').style.width='60%';
+    pic=await pictureMatch(canvas,isCropped,lang);renderMatches(pic.slice(0,16),'Best picture matches');
+    $('#ocr-status').textContent='Double-checking with the card number…';
+  }catch(e){pic=null;pmStatus(e.message==='nobuild'?'Picture matching isn\'t ready yet (the card catalog is still being built). Using text reading for now.':'Picture matching unavailable: '+esc(e.message)+'. Using text reading.','bad')}
   try{
     const r=await readCardImage(canvas,isCropped);
-    fillAndSearch(r);
-  }catch(err){$('#ocr-prog').hidden=true;msg('#scan-msg',err.message||'Reading failed','bad')}
+    $('#f-name').value=r.name||'';$('#f-num').value=r.num||'';$('#f-total').value=r.total||'';
+    if(pic){const v=verify(pic,r).slice(0,16);renderMatches(v,'Best picture matches');
+      const got=[r.name,r.num&&(r.num+(r.total?' / '+r.total:''))].filter(Boolean).join(' · ');
+      msg('#scan-msg',(got?'Text check read: '+got+'. Cards with ✓ agree. ':'Text check couldn\'t read the number; going by picture only. ')+'Wrong? Tap your card in the list, or open "Search by name or number" below.','info')}
+    else fillAndSearch(r);
+  }catch(err){$('#ocr-prog').hidden=true;if(!pic)msg('#scan-msg',err.message||'Reading failed','bad')}
 }
 function fillAndSearch(r,partial){
   if(!partial||r.name)$('#f-name').value=r.name||'';
@@ -457,6 +471,88 @@ $('#preview').addEventListener('click',async e=>{
   }catch(err){prog.hidden=true;msg('#scan-msg',err.message,'bad')}
 });
 function msg(sel,text,kind){const el=$(sel);el.innerHTML=text?'<div class="msg '+(kind||'info')+'">'+esc(text)+'</div>':''}
+
+/* ---------- picture matching (main search) ---------- */
+const ORT_V='1.19.2',MODEL_URL='https://huggingface.co/Xenova/dinov2-small/resolve/main/onnx/model_quantized.onnx',ASSETS='https://assets.tcgdex.net/';
+const PM={sess:null,mu:null,W:null,idx:{},info:null,busy:null};
+async function pmCache(){try{return await caches.open('ccs-pm-v1')}catch{return null}}
+async function cachedBuf(url,onProg){
+  const c=await pmCache();
+  if(c){const hit=await c.match(url);if(hit)return hit.arrayBuffer()}
+  const r=await fetch(url);if(!r.ok)throw new Error('Download failed ('+r.status+')');
+  const total=+r.headers.get('content-length')||0;let blob;
+  if(r.body&&r.body.getReader){const rd=r.body.getReader(),chunks=[];let got=0;for(;;){const {done,value}=await rd.read();if(done)break;chunks.push(value);got+=value.length;onProg&&onProg(got,total)}blob=new Blob(chunks)}else blob=await r.blob();
+  if(c)try{await c.put(url,new Response(blob))}catch{}
+  return blob.arrayBuffer();
+}
+async function pmInfo(){
+  if(PM.info)return PM.info;
+  PM.info=await fetch('index/info.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null)||ls.get('pminfo',null);
+  if(PM.info)ls.set('pminfo',PM.info);return PM.info;
+}
+async function pmIsCached(){const c=await pmCache();return !!(c&&await c.match(MODEL_URL))}
+function pmStatus(t,kind){$('#pm-status').innerHTML=t?`<div class="msg ${kind||'info'}">${t}</div>`:''}
+async function loadPM(lang){
+  if(PM.busy)await PM.busy;
+  if(PM.sess&&PM.idx[lang])return;
+  PM.busy=(async()=>{
+    const info=await pmInfo();
+    if(!info||!info.counts||!info.counts[lang])throw new Error('nobuild');
+    const v='?v='+info.built;
+    const prog=(what)=>(g,t)=>{$('#ocr-prog').hidden=false;$('#ocr-status').textContent='Downloading '+what+' (one time)… '+(t?Math.round(g/t*100)+'%':(g/1e6).toFixed(1)+' MB');$('#ocr-bar').style.width=(t?g/t*100:30)+'%'};
+    if(!window.ort)await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/onnxruntime-web@'+ORT_V+'/dist/ort.min.js';s.onload=res;s.onerror=()=>rej(new Error('Could not load the picture matcher. Check your connection.'));document.head.appendChild(s)});
+    ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@'+ORT_V+'/dist/';
+    ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
+    if(!PM.sess){const b=await cachedBuf(MODEL_URL,prog('picture model ~24 MB'));$('#ocr-status').textContent='Starting picture matcher…';PM.sess=await ort.InferenceSession.create(b,{executionProviders:['wasm']})}
+    if(!PM.mu){const f=new Float32Array(await cachedBuf('index/pca.bin'+v));PM.mu=f.slice(0,768);PM.W=f.slice(768)}
+    if(!PM.idx[lang]){
+      const vec=new Int8Array(await cachedBuf('index/'+lang+'.bin'+v,prog((lang==='ja'?'Japanese':'English')+' card fingerprints')));
+      const meta=JSON.parse(new TextDecoder().decode(await cachedBuf('index/'+lang+'.json'+v)));
+      PM.idx[lang]={vec,meta};
+      // drop older index versions from the cache
+      const c=await pmCache();if(c)for(const k of await c.keys())if(/\/index\//.test(k.url)&&!k.url.includes(v))c.delete(k);
+    }
+  })();
+  try{await PM.busy}finally{PM.busy=null}
+}
+function toTensor(src,x,y,w,h){
+  // two-step downscale for a cleaner 224×224 (same squash the catalog used)
+  const mid=document.createElement('canvas');mid.width=448;mid.height=448;const mg=mid.getContext('2d');mg.imageSmoothingQuality='high';
+  mg.drawImage(src,src.width*x,src.height*y,src.width*w,src.height*h,0,0,448,448);
+  const c=document.createElement('canvas');c.width=c.height=224;const g=c.getContext('2d',{willReadFrequently:true});g.imageSmoothingQuality='high';g.drawImage(mid,0,0,224,224);
+  const d=g.getImageData(0,0,224,224).data,N=224*224,f=new Float32Array(3*N);
+  for(let i=0;i<N;i++){f[i]=(d[i*4]/255-.485)/.229;f[N+i]=(d[i*4+1]/255-.456)/.224;f[2*N+i]=(d[i*4+2]/255-.406)/.225}
+  return new ort.Tensor('float32',f,[1,3,224,224]);
+}
+async function embed(src,crop){
+  const o=await PM.sess.run({pixel_values:toTensor(src,...crop)});const h=o.last_hidden_state.data;
+  const v=new Float32Array(768);let n1=0,n2=0;
+  for(let j=0;j<384;j++){v[j]=h[j];n1+=h[j]*h[j]}
+  for(let t=1;t<257;t++)for(let j=0;j<384;j++)v[384+j]+=h[t*384+j]/256;
+  for(let j=0;j<384;j++)n2+=v[384+j]*v[384+j];n1=Math.sqrt(n1);n2=Math.sqrt(n2);
+  for(let j=0;j<384;j++){v[j]/=n1;v[384+j]/=n2}
+  const p=new Float32Array(128);for(let i=0;i<768;i++){const a=v[i]-PM.mu[i];if(!a)continue;const o2=i*128;for(let j=0;j<128;j++)p[j]+=a*PM.W[o2+j]}
+  let n=0;for(let j=0;j<128;j++)n+=p[j]*p[j];n=Math.sqrt(n)||1;for(let j=0;j<128;j++)p[j]/=n;return p;
+}
+async function pictureMatch(src,isCropped,lang){
+  const crops=isCropped?[[0,0,1,1],[.03,.02,.94,.96]]:[[0,0,1,1],[.08,.06,.84,.88],[.15,.12,.7,.76]];
+  const {vec,meta}=PM.idx[lang],n=meta.length,best=new Float32Array(n).fill(-9);
+  for(const cr of crops){const q=await embed(src,cr);
+    for(let i=0;i<n;i++){let d=0;const o=i*128;for(let j=0;j<128;j++)d+=q[j]*vec[o+j];d/=127;if(d>best[i])best[i]=d}}
+  const order=[...best.keys()].sort((a,b)=>best[b]-best[a]).slice(0,40);
+  const sets=await getSets(lang).catch(()=>[]);const sb=Object.fromEntries(sets.map(s=>[s.id,s]));
+  return order.map(i=>{const [id,name,localId,img]=meta[i];const sid=id.slice(0,id.lastIndexOf('-'));const s=sb[sid];
+    return {id,name,localId,image:ASSETS+img,setName:s&&s.name,official:s&&s.cardCount&&s.cardCount.official,lang,sim:best[i]}});
+}
+// text read = second opinion: same artwork reprints get sorted by number/name/set total
+function verify(list,r){
+  const nm=r.name?normName(r.name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|BREAK)$/,'')):'';
+  return list.map(c=>{const chips=[];let b=0;
+    if(r.num&&normNum(c.localId)===normNum(r.num)){b+=.12;chips.push('# ✓')}
+    if(r.total&&c.official&&String(c.official)===String(+r.total||r.total)){b+=.04;chips.push('set ✓')}
+    if(nm&&normName(c.name).startsWith(nm)){b+=.05;chips.push('name ✓')}
+    return {...c,score:c.sim+b,chips}}).sort((a,b)=>b.score-a.score);
+}
 
 /* ---------- search ---------- */
 const PROMO={SWSH:'swshp',SVP:'svp',SM:'smp',XY:'xyp',BW:'bwp',HGSS:'hgssp',DP:'dpp'};
@@ -511,9 +607,9 @@ $('#search-btn').addEventListener('click',doSearch);
 ['#f-name','#f-num','#f-total'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()}));
 $('#clear-btn').addEventListener('click',()=>{['#f-name','#f-num','#f-total'].forEach(s=>$(s).value='');$('#preview').hidden=true;msg('#scan-msg','');$('#matches-wrap').hidden=true});
 let matches=[];
-function renderMatches(list){
-  matches=list;$('#matches-wrap').hidden=!list.length;$('#matches-title').textContent=list.length+' match'+(list.length===1?'':'es');
-  $('#matches').innerHTML=list.map((c,i)=>`<button class="tile" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:'No picture'}</div><b>${esc(c.name)}</b><span class="sub">${esc(c.setName||'')}${c.localId?' · '+esc(c.localId)+(c.official?'/'+c.official:''):''}</span></button>`).join('');
+function renderMatches(list,title){
+  matches=list;$('#matches-wrap').hidden=!list.length;$('#matches-title').textContent=title||(list.length+' match'+(list.length===1?'':'es'));
+  $('#matches').innerHTML=list.map((c,i)=>`<button class="tile" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:'No picture'}</div><b>${esc(c.name)}</b><span class="sub">${esc(c.setName||'')}${c.localId?' · '+esc(c.localId)+(c.official?'/'+c.official:''):''}</span>${c.sim!=null?`<span class="row" style="gap:4px"><span class="pill ${i===0?'pos':'est'}">${Math.round(Math.max(0,c.sim)*100)}% look</span>${(c.chips||[]).map(x=>`<span class="pill slp">${x}</span>`).join('')}</span>`:''}</button>`).join('');
   if(list.length)$('#matches-wrap').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openCard(matches[+t.dataset.i])});
@@ -768,6 +864,14 @@ function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});
+(async()=>{const info=await pmInfo();
+  if(!info){pmStatus('Picture matching is still being set up. Text reading works in the meantime.');return}
+  if(await pmIsCached())setTimeout(()=>loadPM(S.lang).then(()=>{$('#ocr-prog').hidden=true}).catch(()=>{$('#ocr-prog').hidden=true}),1200);
+  else $('#pm-ready').hidden=false;
+})();
+$('#pm-ready').addEventListener('click',async()=>{const b=$('#pm-ready');b.disabled=true;
+  try{await loadPM(S.lang);$('#ocr-prog').hidden=true;b.hidden=true;pmStatus('Picture matcher is ready and saved on this device.','good')}
+  catch(e){$('#ocr-prog').hidden=true;b.disabled=false;pmStatus(e.message==='nobuild'?'The card catalog is still being built. Try again in a bit.':'Download failed: '+esc(e.message),'bad')}});
 })();
 </script>
 </body></html>
