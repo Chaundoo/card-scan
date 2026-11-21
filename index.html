@@ -440,13 +440,13 @@ $('#cam').addEventListener('change',async e=>{
 async function handleCard(canvas,isCropped){
   lastCard={canvas,isCropped};const lang=S.lang;
   const pv=$('#preview');pv.src=canvas.toDataURL('image/jpeg',.85);pv.hidden=false;$('#tap-tip').hidden=false;msg('#scan-msg','');pmStatus('');
-  let pic=null;
+  let pic=null;lastRead={};
   try{await loadPM(lang);$('#ocr-prog').hidden=false;$('#ocr-status').textContent='Matching the picture…';$('#ocr-bar').style.width='60%';
     pic=await pictureMatch(canvas,isCropped,lang);renderMatches(pic.slice(0,16),'Best picture matches');
     $('#ocr-status').textContent='Double-checking with the card number…';
   }catch(e){pic=null;pmStatus(e.message==='nobuild'?'Picture matching isn\'t ready yet (the card catalog is still being built). Using text reading for now.':'Picture matching unavailable: '+esc(e.message)+'. Using text reading.','bad')}
   try{
-    const r=await readCardImage(canvas,isCropped);
+    const r=await readCardImage(canvas,isCropped);lastRead=r;
     $('#f-name').value=r.name||'';$('#f-num').value=r.num||'';$('#f-total').value=r.total||'';
     if(pic){const v=verify(pic,r).slice(0,16);renderMatches(v,'Best picture matches');
       const okNum=v.some(c=>c.chips.includes('# ✓')),okName=v.some(c=>c.chips.includes('name ✓'));
@@ -545,14 +545,21 @@ async function embed(src,crop){
   let n=0;for(let j=0;j<128;j++)n+=p[j]*p[j];n=Math.sqrt(n)||1;for(let j=0;j<128;j++)p[j]/=n;return p;
 }
 async function pictureMatch(src,isCropped,lang){
+  // Japanese: also search English cards, since most Japanese cards share their artwork with an English printing
+  const langs=lang==='ja'?['ja','en']:['en'];
+  for(const l of langs)if(!PM.idx[l])await loadPM(l);
   const crops=isCropped?[[0,0,1,1],[.03,.02,.94,.96]]:[[0,0,1,1],[.08,.06,.84,.88],[.15,.12,.7,.76]];
-  const {vec,meta}=PM.idx[lang],n=meta.length,best=new Float32Array(n).fill(-9);
-  for(const cr of crops){const q=await embed(src,cr);
-    for(let i=0;i<n;i++){let d=0;const o=i*128;for(let j=0;j<128;j++)d+=q[j]*vec[o+j];d/=127;if(d>best[i])best[i]=d}}
-  const order=[...best.keys()].sort((a,b)=>best[b]-best[a]).slice(0,40);
-  const sets=await getSets(lang).catch(()=>[]);const sb=Object.fromEntries(sets.map(s=>[s.id,s]));
-  return order.map(i=>{const [id,name,localId,img]=meta[i];const sid=id.slice(0,id.lastIndexOf('-'));const s=sb[sid];
-    return {id,name,localId,image:/^https?:/.test(img)?img:ASSETS+img,setName:s&&s.name,official:s&&s.cardCount&&s.cardCount.official,lang,sim:best[i]}});
+  const qs=[];for(const cr of crops)qs.push(await embed(src,cr));
+  let out=[];
+  for(const l of langs){const {vec,meta}=PM.idx[l],n=meta.length,best=new Float32Array(n).fill(-9);
+    for(const q of qs)for(let i=0;i<n;i++){let d=0;const o=i*128;for(let j=0;j<128;j++)d+=q[j]*vec[o+j];d/=127;if(d>best[i])best[i]=d}
+    for(let i=0;i<n;i++)if(/\/tcgp\//.test(meta[i][3]))best[i]=-9; // TCG Pocket (digital only)
+    const order=[...best.keys()].sort((a,b)=>best[b]-best[a]).slice(0,30);
+    const sets=await getSets(l).catch(()=>[]);const sb=Object.fromEntries(sets.map(s=>[s.id,s]));
+    out=out.concat(order.map(i=>{const [id,name,localId,img]=meta[i];const sid=id.slice(0,id.lastIndexOf('-'));const s=sb[sid];
+      return {id,name,localId,image:/^https?:/.test(img)?img:ASSETS+img,setName:s&&s.name,official:s&&s.cardCount&&s.cardCount.official,lang:l,sim:best[i]+(l===lang?.02:0),twin:l!==lang}}));
+  }
+  return out.sort((a,b)=>b.sim-a.sim).slice(0,40);
 }
 // text read = second opinion: same artwork reprints get sorted by number/name/set total
 function verify(list,r){
@@ -619,13 +626,13 @@ $('#clear-btn').addEventListener('click',()=>{['#f-name','#f-num','#f-total'].fo
 let matches=[];
 function renderMatches(list,title){
   matches=list;$('#matches-wrap').hidden=!list.length;$('#matches-title').textContent=title||(list.length+' match'+(list.length===1?'':'es'));
-  $('#matches').innerHTML=list.map((c,i)=>`<button class="tile" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:'No picture'}</div><b>${esc(c.name)}</b><span class="sub">${esc(c.setName||'')}${c.localId?' · '+esc(c.localId)+(c.official?'/'+c.official:''):''}</span>${c.sim!=null?`<span class="row" style="gap:4px"><span class="pill ${i===0?'pos':'est'}">${Math.round(Math.max(0,c.sim)*100)}% look</span>${(c.chips||[]).map(x=>`<span class="pill slp">${x}</span>`).join('')}</span>`:''}</button>`).join('');
+  $('#matches').innerHTML=list.map((c,i)=>`<button class="tile" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:'No picture'}</div><b>${esc(c.name)}</b><span class="sub">${esc(c.setName||'')}${c.localId?' · '+esc(c.localId)+(c.official?'/'+c.official:''):''}</span>${c.sim!=null?`<span class="row" style="gap:4px"><span class="pill ${i===0?'pos':'est'}">${Math.round(Math.max(0,c.sim)*100)}% look</span>${c.twin?'<span class="pill warn">Same art · English</span>':(c.lang==='ja'&&S.lang==='ja'?'<span class="pill est">Japanese</span>':'')}${(c.chips||[]).map(x=>`<span class="pill slp">${x}</span>`).join('')}</span>`:''}</button>`).join('');
   if(list.length)$('#matches-wrap').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openCard(matches[+t.dataset.i])});
 
 /* ---------- card ---------- */
-let card=null,prints=[],pIdx=0,cond='LP',live={},enName='';
+let card=null,prints=[],pIdx=0,cond='LP',live={},enName='',lastRead={},jpTwin=false;
 const liveStore=new Map();
 // comps you read are kept on this phone for 24 hours, then dropped
 const LIVE_TTL=24*3600e3;
@@ -637,16 +644,16 @@ function liveSave(k,v){const a=liveAll();a[k]=v;const keys=Object.keys(a);
   if(keys.length>60){keys.sort((x,y)=>Math.max(...Object.values(a[x]).map(o=>o.at))-Math.max(...Object.values(a[y]).map(o=>o.at)));for(const old of keys.slice(0,keys.length-60))delete a[old]}
   try{localStorage.setItem('ccs.live',JSON.stringify(a))}catch{for(const s of Object.values(v))for(const it of (s.items||[]))delete it.img;ls.set('live',a)}}
 function liveSummary(prefix){const a=liveAll();let at=0,n=0;for(const k of Object.keys(a))if(k.startsWith(prefix))for(const s of Object.values(a[k])){n++;at=Math.max(at,s.at)}return n?{n,at}:null}
-const key=()=>card?card.lang+':'+card.id+':'+pIdx:'';
+const key=()=>card?(jpTwin?'jt':card.lang)+':'+card.id+':'+pIdx:'';
 async function openCard(m){
   show('card');$('#card-empty').hidden=true;$('#card-view').hidden=false;
   $('#c-name').textContent=m.name;$('#c-set').textContent='Loading…';$('#c-art').innerHTML=m.image?`<img src="${esc(imgUrl(m.image,'high'))}" alt="">`:'No picture';
   try{
-    const c=await getJSON(API+m.lang+'/cards/'+encodeURIComponent(m.id));c.lang=m.lang;card=c;
+    const c=await getJSON(API+m.lang+'/cards/'+encodeURIComponent(m.id));c.lang=m.lang;card=c;jpTwin=!!m.twin;if(!c.image&&m.image)c.image=m.image;
     enName=c.name;
     if(m.lang==='ja'&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
-    pushRecent({id:m.id,lang:m.lang,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
+    pushRecent({id:m.id,lang:m.lang,twin:!!m.twin,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
     renderCard();
   }catch(e){$('#c-set').textContent='Could not load this card ('+e.message+')'}
 }
@@ -672,6 +679,7 @@ function buildPrints(c){
   return out;
 }
 function ebayQuery(){
+  if(jpTwin){const n=lastRead.num?(lastRead.num+(lastRead.total&&/^\d+$/.test(lastRead.total)?'/'+lastRead.total:'')):'';return [card.name,n,'japanese'].filter(Boolean).join(' ')}
   const p=prints[pIdx]||{};const parts=[enName||card.name];
   const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
   parts.push(card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''));
@@ -683,7 +691,7 @@ function ebayQuery(){
 function links(){
   const p=prints[pIdx]||{};const q=$('#c-q').value.trim()||ebayQuery();
   const ex=' -psa -bgs -cgc -sgc -graded -lot';
-  const tcg=p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
+  const tcg=jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
   return {
     tcg,
     ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&ul_noapp=1#ul_noapp',
@@ -694,7 +702,7 @@ function links(){
 function renderCard(){
   const c=card;const off=c.set&&c.set.cardCount&&c.set.cardCount.official;
   $('#c-name').textContent=c.name+(c.lang==='ja'&&enName&&enName!==c.name?' ('+enName+')':'');
-  $('#c-set').textContent=[c.set&&c.set.name,c.localId+(off&&/^\d+$/.test(c.localId)?'/'+off:''),c.rarity,c.lang==='ja'?'Japanese':'English'].filter(Boolean).join(' · ');
+  $('#c-set').textContent=(jpTwin?'Japanese version of this art · English twin: ':'')+[c.set&&c.set.name,c.localId+(off&&/^\d+$/.test(c.localId)?'/'+off:''),c.rarity,(jpTwin?'':c.lang==='ja'?'Japanese':'English')].filter(Boolean).join(' · ');
   $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}${p.tcg&&p.tcg.marketPrice!=null?' · '+money(p.tcg.marketPrice):''}</option>`).join('');$('#c-print').value=pIdx;
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   $('#c-q').value=ebayQuery();
@@ -702,6 +710,7 @@ function renderCard(){
   renderQuick();renderLinks();renderSources();renderMath();renderPins();
 }
 function renderQuick(){
+  if(jpTwin){$('#c-quick').innerHTML='<p class="note" style="grid-column:1/-1;margin:0">Japanese card matched through its English twin (same artwork). English prices don\'t apply, so read Japanese eBay comps below. Put the number from your card (bottom right) in the eBay search words if it isn\'t there.</p>';return}
   const p=prints[pIdx]||{};const t=p.tcg;const cm=p.cm;
   const k=[];
   if(t){k.push(['TCG market',money(t.marketPrice)],['TCG low',money(t.lowPrice)],['TCG mid',money(t.midPrice)])}
@@ -775,7 +784,7 @@ function ebayTable(d,s){
 }
 const itemUrl=u=>/ebay\.com/.test(u)&&!/ul_noapp/.test(u)?u+(u.includes('?')?'&':'?')+'ul_noapp=1#ul_noapp':u;
 /* ---------- pinned comps (kept until you unpin) ---------- */
-const pinCard=()=>card?card.lang+':'+card.id:'';
+const pinCard=()=>card?(jpTwin?'jt':card.lang)+':'+card.id:'';
 const pinId=(src,r)=>src+'|'+(r.url||'')+'|'+r.title+'|'+r.price+'|'+(r.date||'');
 const pinsAll=()=>ls.get('pins',{});
 function isPinned(src,r){const a=pinsAll()[pinCard()]||[];return a.some(p=>p.pid===pinId(src,r))}
@@ -852,7 +861,7 @@ function renderMath(){
   let low=null;if(live.ebayList&&live.ebayList.items){const f=filterEbay(live.ebayList.items).list;if(f.length)low=Math.min(...f.map(r=>r.price+(r.ship||0)))}
   let mv=null,est=false;
   if(parts.length){const W=parts.reduce((a,b)=>a+b.w,0);mv=parts.reduce((a,b)=>a+b.v*b.w,0)/W}
-  else if(p.tcg&&p.tcg.marketPrice!=null){mv=p.tcg.marketPrice*COND_FACTOR[cond];est=true}
+  else if(!jpTwin&&p.tcg&&p.tcg.marketPrice!=null){mv=p.tcg.marketPrice*COND_FACTOR[cond];est=true}
   const el=$('#math');
   if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need comps</h3><p class="note">Read eBay last sold or TCGplayer below and the buy and flip numbers fill in here.</p></div>';return}
   if(low!=null&&low<mv*.9)notes.push(['warn',`Cheapest eBay listing is ${money(low)}, under the comp value. Buyers can get it cheaper, so don't count on the top number.`]);
@@ -893,9 +902,9 @@ function renderMath(){
 }
 
 /* ---------- recent ---------- */
-function pushRecent(c){let r=ls.get('recent',[]).filter(x=>!(x.id===c.id&&x.lang===c.lang));r.unshift(c);ls.set('recent',r.slice(0,40))}
-function renderRecent(){const r=ls.get('recent',[]);$('#recent').innerHTML=r.length?r.map((c,i)=>{const sm=liveSummary(c.lang+':'+c.id+':');const left=sm?Math.max(1,Math.round((sm.at+LIVE_TTL-Date.now())/36e5)):0;
-  return `<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div style="min-width:0"><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.lang==='ja'?'Japanese':'English'}</div>${(pinsAll()[c.lang+':'+c.id]||[]).length?`<span class="pill warn" style="margin-top:4px;margin-right:4px">★ ${(pinsAll()[c.lang+':'+c.id]||[]).length} pinned</span>`:''}${sm?`<span class="pill pos" style="margin-top:4px">Comps saved · read ${timeAgo(sm.at)} · clears in ${left}h</span>`:''}</div></button>`}).join(''):'<p class="note">Nothing yet.</p>'}
+function pushRecent(c){let r=ls.get('recent',[]).filter(x=>!(x.id===c.id&&x.lang===c.lang&&!!x.twin===!!c.twin));r.unshift(c);ls.set('recent',r.slice(0,40))}
+function renderRecent(){const r=ls.get('recent',[]);$('#recent').innerHTML=r.length?r.map((c,i)=>{const sm=liveSummary((c.twin?'jt':c.lang)+':'+c.id+':');const left=sm?Math.max(1,Math.round((sm.at+LIVE_TTL-Date.now())/36e5)):0;
+  return `<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div style="min-width:0"><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.twin?'Japanese (via English twin)':c.lang==='ja'?'Japanese':'English'}</div>${(pinsAll()[(c.twin?'jt':c.lang)+':'+c.id]||[]).length?`<span class="pill warn" style="margin-top:4px;margin-right:4px">★ ${(pinsAll()[(c.twin?'jt':c.lang)+':'+c.id]||[]).length} pinned</span>`:''}${sm?`<span class="pill pos" style="margin-top:4px">Comps saved · read ${timeAgo(sm.at)} · clears in ${left}h</span>`:''}</div></button>`}).join(''):'<p class="note">Nothing yet.</p>'}
 $('#recent').addEventListener('click',e=>{const b=e.target.closest('.ritem');if(b){const c=ls.get('recent',[])[+b.dataset.i];openCard(c)}});
 $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('live',{});liveStore.clear();renderRecent()});
 

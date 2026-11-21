@@ -114,7 +114,7 @@ for lang in LANGS:
             cards += cl
     seen = set(); cards = [c for c in cards if not (c['id'] in seen or seen.add(c['id']))]
     if lang == 'en': fill_missing(cards)
-    cards = [c for c in cards if c.get('image')]
+    cards = [c for c in cards if c.get('image') and '/tcgp/' not in c['image']]  # skip TCG Pocket (digital only)
     print(lang, 'cards with pictures', len(cards))
     todo = [c for c in cards if c['id'] not in cached]
     print(lang, 'new to fingerprint', len(todo))
