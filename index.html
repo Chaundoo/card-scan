@@ -326,7 +326,7 @@ $('#lang-seg').addEventListener('click',e=>{const b=e.target.closest('button');i
 setLang(S.lang);
 
 /* ---------- API helpers ---------- */
-async function getJSON(u){const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}
+async function getJSON(u,tries=3){for(let i=0;;i++){try{const r=await fetch(u);if(r.status===404)throw Object.assign(new Error('HTTP 404'),{final:true});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}catch(e){if(e.final||i>=tries-1)throw e;await new Promise(z=>setTimeout(z,700*(i+1)))}}}
 const setCache={};
 async function getSets(lang){
   if(setCache[lang])return setCache[lang];
@@ -683,6 +683,7 @@ function liveSummary(prefix){const a=liveAll();let at=0,n=0;for(const k of Objec
 const key=()=>card?(jpTwin?'jt':card.lang)+':'+card.id+':'+pIdx:'';
 async function openCard(m){
   show('card');$('#card-empty').hidden=true;$('#card-view').hidden=false;
+  card=null;prints=[];live={};document.documentElement.dataset.ccsKey='';$('#c-links').innerHTML='';$('#c-quick').innerHTML='';$('#c-q').value='';['tcg','ebaySold','ebayList'].forEach(x=>$('#src-'+x).innerHTML='');$('#math').innerHTML='';$('#pins-panel').hidden=true;
   $('#c-name').textContent=m.name;$('#c-set').textContent='Loading…';$('#c-art').innerHTML=m.image?`<img src="${esc(imgUrl(m.image,'high'))}" alt="">`:'No picture';
   if(m.custom||m.own){const own=ownAll().find(x=>x.id===m.id)||m;
     card={id:own.id,name:own.name,localId:own.localId||'',lang:own.lang,image:own.image,custom:true,set:{name:'Added by you'}};jpTwin=false;enName=own.name;
@@ -696,7 +697,12 @@ async function openCard(m){
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
     pushRecent({id:m.id,lang:m.lang,twin:!!m.twin,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
     renderCard();
-  }catch(e){$('#c-set').textContent='Could not load this card ('+e.message+')'}
+  }catch(e){
+    // never keep the previous card's data: fall back to what the match list knew about this card
+    card={id:m.id,name:m.name,localId:m.localId||'',lang:m.lang,image:m.image,set:{name:m.setName||'',id:m.id.slice(0,m.id.lastIndexOf('-')),cardCount:{official:m.official}}};jpTwin=!!m.twin;enName=m.name;
+    prints=[{label:'Details unavailable',type:'normal',stamps:[],pid:null,tcg:null}];pIdx=0;cond='LP';$('#c-sticker').value='';
+    renderCard();$('#c-set').textContent+=' · Couldn\'t load full details (connection). Links and comps still work; reopen the card to retry.';
+  }
 }
 function buildPrints(c){
   const out=[];const vd=c.variants_detailed||[];
