@@ -1,7 +1,7 @@
 {
  "model": "https://huggingface.co/Xenova/dinov2-small/resolve/main/onnx/model_quantized.onnx",
  "dims": 128,
- "built": "2026-11-21T2100",
+ "built": "2026-11-21T2109",
  "art": [
   0.08,
   0.1,
@@ -9,7 +9,7 @@
   0.42
  ],
  "counts": {
-  "en": 20330,
+  "en": 20596,
   "ja": 3882
  }
 }
