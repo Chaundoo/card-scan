@@ -4,6 +4,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Chaundoo Card Scan</title>
 <meta name="theme-color" content="#1b2540">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap">
 <style>
@@ -689,8 +692,8 @@ function renderQuick(){
 function renderLinks(){
   const L=links();
   $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">TCGplayer <small>${prints[pIdx]&&prints[pIdx].pid?'product':'search'}</small></a>
-  <a class="btn" href="${esc(L.ebaySold)}" target="_blank" rel="noopener">eBay last sold <small>raw only</small></a>
-  <a class="btn" href="${esc(L.ebayList)}" target="_blank" rel="noopener">eBay listings <small>Buy It Now</small></a>
+  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">eBay last sold <small>raw only</small></a>
+  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebayList)}" target="_blank" rel="noopener">eBay listings <small>Buy It Now</small></a>
   <a class="btn" href="${esc(L.pc)}" target="_blank" rel="noopener">PriceCharting <small>extra check</small></a>`;
 }
 $('#c-print').addEventListener('change',e=>{pIdx=+e.target.value;renderCard()});
@@ -727,7 +730,7 @@ function readSource(s,url){
   const p=prints[pIdx]||{};
   if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+' '+card.localId,productId:p.pid||null,cond},location.origin);
   else if(!sessionStorage.getItem('ccs.nohelper')){sessionStorage.setItem('ccs.nohelper','1');setTimeout(()=>alert('Helper not installed, so the page will just open. Copy the page and use Paste, or set up the helper on the Helper tab.'),50)}
-  window.open(url,'_blank','noopener');
+  window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
 function gotLive(k,s,payload){
   const cur=liveStore.get(k)||{};if(cur[s]&&cur[s].at===payload.at)return;

@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Opening…</title><style>body{font:600 16px system-ui,sans-serif;background:#0e1322;color:#e8ecf6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px}a{color:#f0bd2a}</style></head>
+<body><p id="m">Opening…</p>
+<script>
+// Forwards to eBay/TCGplayer without a tap, so iPhone keeps it in Safari instead of jumping to the app.
+(function(){
+  var u=new URLSearchParams(location.search).get('u')||'';var ok=false;
+  try{var h=new URL(u).hostname;ok=/^https:/.test(u)&&/(^|\.)(ebay\.com|tcgplayer\.com|pricecharting\.com)$/.test(h)}catch(e){}
+  if(!ok){document.getElementById('m').textContent='That link isn\'t allowed.';return}
+  setTimeout(function(){location.replace(u)},60);
+  document.getElementById('m').innerHTML='Opening… <a href="'+u.replace(/"/g,'%22')+'">tap here if it doesn\'t</a>';
+})();
+</script></body></html>
