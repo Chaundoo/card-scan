@@ -355,7 +355,7 @@ function findSpecies(text){
   for(const c of cands){const cn=normName(c);if(cn.length<3||STOP.has(c.toUpperCase()))continue;
     for(let i=0;i<SPECIES_N.length;i++){const sn=SPECIES_N[i];if(Math.abs(sn.length-cn.length)>2)continue;
       const d=lev(cn,sn);const sim=1-d/Math.max(sn.length,cn.length);
-      const need=sn.length<=4?1:sn.length<=6?.8:.75;
+      const need=sn.length<=4?1:sn.length<=6?.83:sn.length<=8?.78:.74;
       if(sim>=need&&(!best||sim>best.sim||(sim===best.sim&&sn.length>best.len)))best={name:SPECIES[i],sim,len:sn.length}}}
   if(!best)return '';
   const suf=(clean.match(/\b(VMAX|VSTAR|V-UNION|GX|EX|ex|BREAK|LV\.?\s?X|Prime|V)\b/)||[])[1];
@@ -383,7 +383,7 @@ async function readCardImage(src,isCropped){
   const y0=isCropped?.86:.78,hh=isCropped?.14:.22;
   const numPasses=[['bottom of card',0,y0,1,hh,2200],['bottom left',0,y0,.55,hh,1800],['bottom right',.45,y0,.55,hh,1800]];
   let numText='';
-  for(const [lbl,x,y,ww,h,ow] of numPasses){st.textContent='Reading '+lbl+'…';const t=await ocr(w,prep(src,x,y,ww,h,ow),'num');step++;numText+='\n'+t;const p=parseNum(t);if(p){Object.assign(r,p);break}}
+  let bestP=null;for(const [lbl,x,y,ww,h,ow] of numPasses){st.textContent='Reading '+lbl+'…';const t=await ocr(w,prep(src,x,y,ww,h,ow),'num');step++;numText+='\n'+t;const p=parseNum(t);if(p&&(!bestP||(p.num.length+p.total.length)>(bestP.num.length+bestP.total.length)))bestP=p;if(bestP&&bestP.total&&bestP.num.length>=String(bestP.total).length)break}if(bestP)Object.assign(r,bestP);
   if(S.lang==='ja'){const js=parseJaSet(numText);if(js)r.total=js}
   st.textContent='Reading name…';
   step=3;let nameText=await ocr(w,prep(src,0,0,1,isCropped?.13:.2,1600,false),'line');
