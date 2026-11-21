@@ -103,7 +103,9 @@ a{color:inherit}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px;display:flex;flex-direction:column;gap:6px;text-align:left;transition:transform .15s,box-shadow .15s}
 .tile:hover{transform:translateY(-2px);box-shadow:var(--shadow)}
 .art{aspect-ratio:63/88;border-radius:8px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
-.art img{width:100%;height:100%;object-fit:cover;display:block}
+.art img{width:100%;height:100%;object-fit:contain;display:block}
+.cardhead .art{background:transparent;border-radius:6px}
+.cardhead .art img{height:auto;border-radius:6px}
 .tile b{font-size:14.5px;line-height:1.2}
 /* card */
 .cardhead{display:flex;gap:14px}
@@ -250,7 +252,7 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
   <!-- RECENT -->
   <section id="v-recent" hidden>
     <div class="panel"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Recently looked up</h2><button class="btn sm" id="recent-clear">Clear</button></div>
-      <p class="note">Only the card is remembered here, not prices. Prices are pulled fresh each time.</p></div>
+      <p class="note">Comps you read (sales, listings and dates) stay saved on this phone for 24 hours so you don't have to read the same card twice at a show, then they're removed automatically. Tap Read again any time for fresh numbers.</p></div>
     <div class="recent" id="recent"></div>
   </section>
 
@@ -621,7 +623,17 @@ $('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(
 
 /* ---------- card ---------- */
 let card=null,prints=[],pIdx=0,cond='LP',live={},enName='';
-const liveStore=new Map(); // session only
+const liveStore=new Map();
+// comps you read are kept on this phone for 24 hours, then dropped
+const LIVE_TTL=24*3600e3;
+function liveAll(){const a=ls.get('live',{}),now=Date.now();let changed=false;
+  for(const k of Object.keys(a)){for(const s of Object.keys(a[k]))if(!a[k][s]||now-a[k][s].at>LIVE_TTL){delete a[k][s];changed=true}if(!Object.keys(a[k]).length){delete a[k];changed=true}}
+  if(changed)ls.set('live',a);return a}
+function liveLoad(k){const v=liveAll()[k];return v?{...v}:null}
+function liveSave(k,v){const a=liveAll();a[k]=v;const keys=Object.keys(a);
+  if(keys.length>60){keys.sort((x,y)=>Math.max(...Object.values(a[x]).map(o=>o.at))-Math.max(...Object.values(a[y]).map(o=>o.at)));for(const old of keys.slice(0,keys.length-60))delete a[old]}
+  try{localStorage.setItem('ccs.live',JSON.stringify(a))}catch{for(const s of Object.values(v))for(const it of (s.items||[]))delete it.img;ls.set('live',a)}}
+function liveSummary(prefix){const a=liveAll();let at=0,n=0;for(const k of Object.keys(a))if(k.startsWith(prefix))for(const s of Object.values(a[k])){n++;at=Math.max(at,s.at)}return n?{n,at}:null}
 const key=()=>card?card.lang+':'+card.id+':'+pIdx:'';
 async function openCard(m){
   show('card');$('#card-empty').hidden=true;$('#card-view').hidden=false;
@@ -683,7 +695,7 @@ function renderCard(){
   $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}${p.tcg&&p.tcg.marketPrice!=null?' · '+money(p.tcg.marketPrice):''}</option>`).join('');$('#c-print').value=pIdx;
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   $('#c-q').value=ebayQuery();
-  live=liveStore.get(key())||{};document.documentElement.dataset.ccsKey=key();
+  live=liveStore.get(key())||liveLoad(key())||{};liveStore.set(key(),live);document.documentElement.dataset.ccsKey=key();
   renderQuick();renderLinks();renderSources();renderMath();
 }
 function renderQuick(){
@@ -737,8 +749,8 @@ function readSource(s,url){
   window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
 function gotLive(k,s,payload){
-  const cur=liveStore.get(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
-  cur[s]=payload;liveStore.set(k,cur);if(k===key()){live=cur;renderSource(s);renderMath()}
+  const cur=liveStore.get(k)||liveLoad(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
+  cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);if(k===key()){live=cur;renderSource(s);renderMath()}
 }
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='result'||!d.payload)return;gotLive(d.key,d.source,d.payload)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&helperOn()&&card)window.postMessage({ccs:'poll',key:key()},location.origin)});
@@ -863,9 +875,10 @@ function renderMath(){
 
 /* ---------- recent ---------- */
 function pushRecent(c){let r=ls.get('recent',[]).filter(x=>!(x.id===c.id&&x.lang===c.lang));r.unshift(c);ls.set('recent',r.slice(0,40))}
-function renderRecent(){const r=ls.get('recent',[]);$('#recent').innerHTML=r.length?r.map((c,i)=>`<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.lang==='ja'?'Japanese':'English'}</div></div></button>`).join(''):'<p class="note">Nothing yet.</p>'}
+function renderRecent(){const r=ls.get('recent',[]);$('#recent').innerHTML=r.length?r.map((c,i)=>{const sm=liveSummary(c.lang+':'+c.id+':');const left=sm?Math.max(1,Math.round((sm.at+LIVE_TTL-Date.now())/36e5)):0;
+  return `<button class="ritem" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:''}</div><div style="min-width:0"><b>${esc(c.name)}</b><div class="sub">${esc(c.setName||'')} · ${esc(c.localId)}${c.official?'/'+c.official:''} · ${c.lang==='ja'?'Japanese':'English'}</div>${sm?`<span class="pill pos" style="margin-top:4px">Comps saved · read ${timeAgo(sm.at)} · clears in ${left}h</span>`:''}</div></button>`}).join(''):'<p class="note">Nothing yet.</p>'}
 $('#recent').addEventListener('click',e=>{const b=e.target.closest('.ritem');if(b){const c=ls.get('recent',[])[+b.dataset.i];openCard(c)}});
-$('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);renderRecent()});
+$('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('live',{});liveStore.clear();renderRecent()});
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
