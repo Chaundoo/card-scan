@@ -534,10 +534,12 @@ async function loadPM(lang){
     ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||2):1;
     if(!PM.sess){const b=await cachedBuf(MODEL_URL,prog('picture model ~24 MB'));$('#ocr-status').textContent='Starting picture matcher…';PM.sess=await ort.InferenceSession.create(b,{executionProviders:['wasm']})}
     if(!PM.mu){const f=new Float32Array(await cachedBuf('index/pca.bin'+v));PM.mu=f.slice(0,768);PM.W=f.slice(768)}
+    if(info.art&&!PM.muA){const f=new Float32Array(await cachedBuf('index/pca_art.bin'+v));PM.muA=f.slice(0,768);PM.WA=f.slice(768);PM.art=info.art}
     if(!PM.idx[lang]){
       const vec=new Int8Array(await cachedBuf('index/'+lang+'.bin'+v,prog((lang==='ja'?'Japanese':'English')+' card fingerprints')));
       const meta=JSON.parse(new TextDecoder().decode(await cachedBuf('index/'+lang+'.json'+v)));
-      PM.idx[lang]={vec,meta};
+      const avec=info.art?new Int8Array(await cachedBuf('index/'+lang+'_art.bin'+v)):null;
+      PM.idx[lang]={vec,meta,avec};
       // drop older index versions from the cache
       const c=await pmCache();if(c)for(const k of await c.keys())if(/\/index\//.test(k.url)&&!k.url.includes(v))c.delete(k);
     }
@@ -553,14 +555,14 @@ function toTensor(src,x,y,w,h){
   for(let i=0;i<N;i++){f[i]=(d[i*4]/255-.485)/.229;f[N+i]=(d[i*4+1]/255-.456)/.224;f[2*N+i]=(d[i*4+2]/255-.406)/.225}
   return new ort.Tensor('float32',f,[1,3,224,224]);
 }
-async function embed(src,crop){
+async function embed(src,crop,art){const mu=art?PM.muA:PM.mu,W=art?PM.WA:PM.W;
   const o=await PM.sess.run({pixel_values:toTensor(src,...crop)});const h=o.last_hidden_state.data;
   const v=new Float32Array(768);let n1=0,n2=0;
   for(let j=0;j<384;j++){v[j]=h[j];n1+=h[j]*h[j]}
   for(let t=1;t<257;t++)for(let j=0;j<384;j++)v[384+j]+=h[t*384+j]/256;
   for(let j=0;j<384;j++)n2+=v[384+j]*v[384+j];n1=Math.sqrt(n1);n2=Math.sqrt(n2);
   for(let j=0;j<384;j++){v[j]/=n1;v[384+j]/=n2}
-  const p=new Float32Array(128);for(let i=0;i<768;i++){const a=v[i]-PM.mu[i];if(!a)continue;const o2=i*128;for(let j=0;j<128;j++)p[j]+=a*PM.W[o2+j]}
+  const p=new Float32Array(128);for(let i=0;i<768;i++){const a=v[i]-mu[i];if(!a)continue;const o2=i*128;for(let j=0;j<128;j++)p[j]+=a*W[o2+j]}
   let n=0;for(let j=0;j<128;j++)n+=p[j]*p[j];n=Math.sqrt(n)||1;for(let j=0;j<128;j++)p[j]/=n;return p;
 }
 async function pictureMatch(src,isCropped,lang){
@@ -569,9 +571,11 @@ async function pictureMatch(src,isCropped,lang){
   for(const l of langs)if(!PM.idx[l])await loadPM(l);
   const crops=isCropped?[[0,0,1,1],[.03,.02,.94,.96]]:[[0,0,1,1],[.08,.06,.84,.88],[.15,.12,.7,.76]];
   const qs=[];for(const cr of crops)qs.push(await embed(src,cr));lastQs=qs;
+  // artwork-window fingerprints: borders, foil and text layout matter less (old Japanese cards place the art lower)
+  const qa=[];if(PM.muA){const wins=artWindows(lang);for(const cr of crops.slice(0,isCropped?1:2))for(const w of wins)qa.push(await embed(src,[cr[0]+cr[2]*w[0],cr[1]+cr[3]*w[1],cr[2]*w[2],cr[3]*w[3]],true))}lastQA=qa;
   let out=[];
-  for(const l of langs){const {vec,meta}=PM.idx[l],n=meta.length,best=new Float32Array(n).fill(-9);
-    for(const q of qs)for(let i=0;i<n;i++){let d=0;const o=i*128;for(let j=0;j<128;j++)d+=q[j]*vec[o+j];d/=127;if(d>best[i])best[i]=d}
+  for(const l of langs){const {vec,meta,avec}=PM.idx[l],n=meta.length,best=new Float32Array(n);
+    for(let i=0;i<n;i++)best[i]=scoreCard(vec,avec,i,qs,qa);
     for(let i=0;i<n;i++)if(/\/tcgp\//.test(meta[i][3]))best[i]=-9; // TCG Pocket (digital only)
     const order=[...best.keys()].sort((a,b)=>best[b]-best[a]).slice(0,30);
     const sets=await getSets(l).catch(()=>[]);const sb=Object.fromEntries(sets.map(s=>[s.id,s]));
@@ -592,11 +596,17 @@ $('#own-save').addEventListener('click',()=>{
   const c={id:'own-'+Date.now(),name,localId:$('#own-num').value.trim(),lang:S.lang,image:thumbOf(lastCard.canvas),setName:'Added by you',custom:true,vecs:lastQs.map(q=>Array.from(q,x=>Math.round(x*1000)/1000))};
   const all=ownAll();all.unshift(c);ls.set('own',all.slice(0,150));$('#own-name').value='';$('#own-num').value='';openCard(c);
 });
+let lastQA=[];
+function artWindows(lang){const a=PM.art||[.08,.10,.84,.42];return lang==='ja'?[a,[.08,.14,.84,.40],[.10,.18,.80,.38]]:[a,[.08,.14,.84,.40]]}
+// whole-card score averaged with the artwork score (just the whole-card score if a card has no artwork fingerprint)
+function scoreCard(vec,avec,i,qs,qa){const o=i*128;let f=-9;
+  for(const q of qs){let d=0;for(let j=0;j<128;j++)d+=q[j]*vec[o+j];if(d>f)f=d}f/=127;
+  if(!avec||!qa.length)return f;let a=-9,nz=false;for(let j=0;j<128;j++)if(avec[o+j]){nz=true;break}if(!nz)return f;
+  for(const q of qa){let d=0;for(let j=0;j<128;j++)d+=q[j]*avec[o+j];if(d>a)a=d}return (f+a/127)/2}
 // look-score for one catalog card against the last snap
 function picSim(lang,id){const ix=PM.idx[lang];if(!ix||!lastQs)return null;
   if(!ix.pos){ix.pos=new Map();ix.meta.forEach((m,i)=>ix.pos.set(m[0],i))}
-  const i=ix.pos.get(id);if(i==null)return null;let best=-9;const o=i*128;
-  for(const q of lastQs){let d=0;for(let j=0;j<128;j++)d+=q[j]*ix.vec[o+j];d/=127;if(d>best)best=d}return best}
+  const i=ix.pos.get(id);if(i==null)return null;return scoreCard(ix.vec,ix.avec,i,lastQs,lastQA)}
 // text read = second opinion: same artwork reprints get sorted by number/name/set total
 function verify(list,r){
   const nm=r.name?normName(r.name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|BREAK)$/,'')):'';
