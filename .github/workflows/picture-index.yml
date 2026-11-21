@@ -1,0 +1,31 @@
+name: Build picture index
+on:
+  workflow_dispatch:
+  push:
+    paths: ['scripts/build_index.py', '.github/workflows/picture-index.yml']
+  schedule:
+    - cron: '23 10 * * 2'   # weekly, picks up new sets
+permissions:
+  contents: write
+concurrency: picture-index
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/cache@v4
+        with:
+          path: cache
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+      - run: pip install onnxruntime==1.19.2 numpy pillow requests
+      - run: python scripts/build_index.py
+      - name: Commit index
+        run: |
+          git config user.name "card-scan-bot"
+          git config user.email "card-scan-bot@users.noreply.github.com"
+          git add index
+          git diff --cached --quiet || (git commit -m "Update picture index" && git pull --rebase && git push)
