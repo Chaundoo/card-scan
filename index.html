@@ -671,8 +671,8 @@ function links(){
   const tcg=p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
   return {
     tcg,
-    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13',
-    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15',
+    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&ul_noapp=1#ul_noapp',
+    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15&ul_noapp=1#ul_noapp',
     pc:'https://www.pricecharting.com/search-products?type=prices&q='+encodeURIComponent(q)
   };
 }
