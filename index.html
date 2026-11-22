@@ -255,6 +255,7 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
         <div id="math"></div>
       </div>
 
+      <div class="panel" id="cfz-panel" hidden></div>
       <div class="panel src" id="src-tcg"></div>
       <div class="panel src" id="src-ebaySold"></div>
       <div class="panel src" id="src-ebayList"></div>
@@ -678,7 +679,7 @@ function renderMatches(list,title){
 $('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openCard(matches[+t.dataset.i])});
 
 /* ---------- card ---------- */
-let card=null,prints=[],pIdx=0,cond='LP',live={},enName='',lastRead={},jpTwin=false;
+let lastMV=null,card=null,prints=[],pIdx=0,cond='LP',live={},enName='',lastRead={},jpTwin=false;
 const liveStore=new Map();
 // comps you read are kept on this phone for 24 hours, then dropped
 const LIVE_TTL=24*3600e3;
@@ -773,7 +774,7 @@ function renderCard(){
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   $('#c-q').value=ebayQuery();
   live=liveStore.get(key())||liveLoad(key())||{};liveStore.set(key(),live);document.documentElement.dataset.ccsKey=key();
-  renderQuick();renderLinks();renderSources();renderMath();renderPins();
+  renderQuick();renderLinks();renderSources();renderMath();renderPins();renderCfz();
 }
 function renderQuick(){
   if(card.custom){$('#c-quick').innerHTML='<p class="note" style="grid-column:1/-1;margin:0">A card you added yourself, so there are no catalog prices. Read eBay comps below. <button class="btn sm" id="own-del" style="margin-left:6px">Remove this card</button></p>';$('#own-del').onclick=()=>{if(!confirm('Remove '+card.name+' from your saved cards?'))return;ls.set('own',ownAll().filter(x=>x.id!==card.id));ls.set('recent',ls.get('recent',[]).filter(x=>x.id!==card.id));show('scan')};return}
@@ -791,7 +792,7 @@ function renderLinks(){
   <a class="btn" href="${esc(L.pc)}" target="_blank" rel="noopener">PriceCharting <small>extra check</small></a>`;
 }
 $('#c-print').addEventListener('change',e=>{pIdx=+e.target.value;renderCard()});
-$('#cond-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cond=b.dataset.c;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x===b));renderSources();renderMath()});
+$('#cond-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cond=b.dataset.c;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x===b));renderSources();renderMath();const f=$('#cfz-from');if(f){f.value=CFZ_CONDS[cond];$('#cfz-to').value=CFZ_CONDS[cond]}});
 $('#c-q').addEventListener('change',()=>renderLinks());
 $('#c-sticker').addEventListener('input',renderMath);
 
@@ -935,7 +936,7 @@ function renderMath(){
   const el=$('#math');
   if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need comps</h3><p class="note">Read eBay last sold or TCGplayer below and the buy and flip numbers fill in here.</p></div>';return}
   if(low!=null&&low<mv*.9)notes.push(['warn',`Cheapest eBay listing is ${money(low)}, under the comp value. Buyers can get it cheaper, so don't count on the top number.`]);
-  const vendorExit=mv*S.vendor/100;
+  lastMV=mv;const vendorExit=mv*S.vendor/100;
   const ebayNet=mv*(1-S.fee/100)-.4-S.ship;
   const best=Math.max(vendorExit,ebayNet);const bestName=ebayNet>=vendorExit?'eBay':'vendor';
   const maxBuy=best/(1+S.target/100);const open=roundNice(maxBuy*.85);
@@ -969,6 +970,96 @@ function renderMath(){
      Walk-away max = ${frac('best exit','1 + target profit')} = ${frac(money(best),'1 + '+S.target+'%')} = <b>${money(maxBuy)}</b><br>
      Open offer ≈ 85% of walk-away, rounded down = <b>${money(open)}</b></p>
      <p class="note">Change vendor %, target profit, eBay fee and shipping at the top of the page.</p></div></details>`;
+}
+
+/* ---------- Profit Log link with Chaundoo Card Flipz ----------
+   Both sites live on chaundoo.github.io, so they share this phone's storage. Card Scan reads the log
+   (with the key Card Flipz saved when you unlocked it) and drops new entries in an inbox that Card Flipz
+   picks up the next time it opens; you then tap Save to GitHub there like always. */
+const CFZ='/card-flipz/';
+const CFZ_CONDS={NM:'nm',LP:'lp',MP:'mp',HP:'mp',DMG:'dmg'};
+function b64d(t){const b=atob(t),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+let cfzLogP=null,cfzMapP=null;
+async function cfzLog(force){
+  if(cfzLogP&&!force)return cfzLogP;
+  cfzLogP=(async()=>{
+    let key=null;try{key=JSON.parse(localStorage.getItem('cfz.logKey')||'null')}catch{}
+    const log=await fetch(CFZ+'profitlog.json',{cache:'no-store'}).then(r=>r.json());
+    let shows=log.shows||[];
+    if(log.enc){
+      if(!key||key.salt!==log.enc.salt||!crypto.subtle)return {locked:true,shows:[]};
+      const k=await crypto.subtle.importKey('raw',b64d(key.key),'AES-GCM',false,['decrypt']);
+      const dec=(o,aad)=>crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(o.iv),additionalData:new TextEncoder().encode(aad)},k,b64d(o.ct)).then(b=>JSON.parse(new TextDecoder().decode(b)));
+      try{await dec(log.enc.check,'check')}catch{return {locked:true,shows:[]}}
+      shows=(await Promise.all(shows.map(x=>dec(x,x.id).catch(()=>null)))).filter(Boolean);
+    }
+    // unsaved changes waiting on this phone (Card Flipz drafts + Card Scan inbox)
+    let sync={};try{sync=JSON.parse(localStorage.getItem('cfz.sync')||'{}')}catch{}
+    const d=sync.shows||{up:{},del:{}};
+    shows=shows.filter(s=>!(d.del||{})[s.id]).map(s=>(d.up||{})[s.id]||s);
+    for(const id of Object.keys(d.up||{}))if(!shows.some(s=>s.id===id))shows.push(d.up[id]);
+    for(const it of cfzInbox()){let sh=it.showId&&shows.find(s=>s.id===it.showId);
+      if(!sh){sh=shows.find(s=>s._inbox===it.showName+'|'+it.date);if(!sh){sh={id:'',name:it.showName,date:it.date,sales:[],_inbox:it.showName+'|'+it.date};shows.push(sh)}}
+      sh.sales=(sh.sales||[]).concat([{...it.sale,pending:true}])}
+    return {locked:false,shows:shows.sort((a,b)=>String(b.date).localeCompare(String(a.date)))};
+  })().catch(e=>({error:e.message,shows:[]}));
+  return cfzLogP;
+}
+// Card Flipz card list → {id: [name, tcgId, number, set]} (kept a day)
+async function cfzMap(){
+  if(cfzMapP)return cfzMapP;
+  cfzMapP=(async()=>{const c=ls.get('cfzmap',null);if(c&&Date.now()-c.at<864e5)return c.map;
+    const man=await fetch(CFZ+'eras/eras.json').then(r=>r.json());const map={};
+    await Promise.all(man.eras.map(e=>fetch(CFZ+'eras/'+e.id+'/'+e.id+'.json').then(r=>r.json()).then(d=>{for(const x of d.cards||[])map[x.id]=[x.name+(x.variant?' ('+x.variant+')':''),x.tcgId||null,x.number||'',x.set||'']}).catch(()=>{})));
+    ls.set('cfzmap',{at:Date.now(),map});return map})().catch(()=>({}));
+  return cfzMapP;
+}
+const cfzInbox=()=>{try{const v=JSON.parse(localStorage.getItem('cfz.inbox')||'[]');return Array.isArray(v)?v:[]}catch{return []}};
+const todayStr=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function cfzLabel(){const off=card.set&&card.set.cardCount&&card.set.cardCount.official;const p=prints[pIdx]||{};
+  return [card.name+(jpTwin?' (Japanese)':''),(card.set&&card.set.name)||'',card.localId?'#'+card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''):'',p.label&&!/^(Normal|Standard|As added|Details unavailable)$/i.test(p.label)?p.label:''].filter(Boolean).join(' · ').slice(0,80)}
+async function renderCfz(){
+  const el=$('#cfz-panel');if(!card){el.hidden=true;return}el.hidden=false;
+  el.innerHTML='<h2>Profit Log</h2><p class="note">Loading your Card Flipz log…</p>';
+  const [log,map]=await Promise.all([cfzLog(),cfzMap()]);if(!card)return;
+  if(log.locked){el.innerHTML=`<h2>Profit Log</h2><p class="note">Your profit log is locked. Open <a href="${CFZ}#log">Chaundoo Card Flipz</a> in this same browser, unlock the Profit Log once with your passcode, then come back. Card Scan uses that same unlock.</p>`;return}
+  if(log.error){el.innerHTML=`<h2>Profit Log</h2><p class="note">Couldn't load the profit log (${esc(log.error)}).</p>`;return}
+  // this card's history: matched by TCGplayer ID (cards on Card Flipz) or by the name written on custom entries
+  const pids=new Set(prints.map(p=>p.pid).filter(Boolean).map(String));const nm=normName(card.name);
+  const hist=[];for(const sh of log.shows)for(const r of sh.sales||[]){const c=r.cardId&&map[r.cardId];
+    const hit=(c&&c[1]&&pids.has(String(c[1])))||(c&&!c[1]&&normName(c[0]).startsWith(nm)&&normNum(c[2])===normNum(card.localId))||(!r.cardId&&normName(r.label||'').startsWith(nm)&&(!card.localId||String(r.label||'').includes(card.localId)));
+    if(hit)hist.push({sh,r,name:c?c[0]:r.label})}
+  const done=hist.filter(h=>h.r.sold!==''&&h.r.sold!=null&&h.r.status!=='holding');
+  const prof=done.reduce((a,h)=>a+(+h.r.sold-(+h.r.bought||0)),0);
+  const opts=log.shows.filter(s=>s.id).slice(0,25).map(s=>`<option value="${esc(s.id)}">${esc(s.name||'Card show')} · ${esc(s.date||'')}</option>`).join('');
+  const L=CFZ_CONDS[cond]||'lp';
+  el.innerHTML=`<div class="row" style="justify-content:space-between"><h2 style="margin:0">Profit Log</h2><a class="btn sm" href="${CFZ}#log">Open Card Flipz</a></div>
+   ${hist.length?`<p class="note" style="margin:6px 0">You've logged this card ${hist.length} time${hist.length===1?'':'s'}${done.length?` · ${money(prof)} profit on ${done.length} sold`:''}.</p>
+   <table class="t">${hist.slice(0,8).map(h=>`<tr><td><div class="ttl">${esc(h.sh.name||'Card show')}</div><div class="sub">${esc(h.sh.date||'')}${h.r.pending?' · not saved yet':''}</div></td><td class="r">paid ${money(+h.r.bought||0)}</td><td class="r">${h.r.sold!==''&&h.r.sold!=null&&h.r.status!=='holding'?'sold '+money(+h.r.sold):'<span class="pill warn">holding</span>'}</td></tr>`).join('')}</table>`:'<p class="note" style="margin:6px 0">No entries for this card in your profit log yet.</p>'}
+   <div class="row" style="margin-top:10px">
+     <label class="field" style="flex:1 1 100%"><span>Card show</span><select id="cfz-show"><option value="__new">New card show today</option>${opts}</select></label>
+     <label class="field" id="cfz-newname-w" style="flex:1 1 100%"><span>New show name</span><input id="cfz-newname" placeholder="Card show" autocomplete="off"></label>
+     <label class="field"><span>Paid $</span><input id="cfz-bought" type="number" inputmode="decimal" step="0.01" value="${esc($('#c-sticker').value||'')}"></label>
+     <label class="field"><span>Sold $ (blank = holding)</span><input id="cfz-sold" type="number" inputmode="decimal" step="0.01"></label>
+     <label class="field"><span>Bought as</span><select id="cfz-from">${['nm','lp','mp','dmg'].map(k=>`<option value="${k}" ${k===L?'selected':''}>${k.toUpperCase()}</option>`).join('')}</select></label>
+     <label class="field"><span>Selling as</span><select id="cfz-to">${['nm','lp','mp','dmg'].map(k=>`<option value="${k}" ${k===L?'selected':''}>${k.toUpperCase()}</option>`).join('')}</select></label>
+     <label class="field" style="flex:1 1 100%"><span>Vendor (optional)</span><input id="cfz-vendor" autocomplete="off"></label>
+   </div>
+   <button class="btn primary" id="cfz-add" style="margin-top:10px;width:100%">Add to Profit Log</button><div id="cfz-msg"></div>`;
+  const sel=$('#cfz-show');const tog=()=>$('#cfz-newname-w').hidden=sel.value!=='__new';sel.onchange=tog;
+  const recentShow=log.shows.find(s=>s.id&&s.date===todayStr());if(recentShow){sel.value=recentShow.id}tog();
+  $('#cfz-add').onclick=()=>{
+    const bought=parseFloat($('#cfz-bought').value),soldV=$('#cfz-sold').value.trim(),sold=parseFloat(soldV);
+    if(!(bought>=0)){$('#cfz-bought').focus();return}
+    const p=prints[pIdx]||{};const cfzId=Object.keys(map).find(id=>map[id][1]&&p.pid&&String(map[id][1])===String(p.pid))||null;
+    const sale={id:'r'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),cardId:cfzId,label:cfzId?'':cfzLabel(),bought,sold:soldV===''?'':sold,status:soldV===''?'holding':'sold',
+      from:$('#cfz-from').value,to:$('#cfz-to').value,boughtOn:todayStr()};
+    if(soldV!=='')sale.soldOn=todayStr();const v=$('#cfz-vendor').value.trim();if(v)sale.vendor=v;if(lastMV)sale.expected=Math.round(lastMV*S.vendor)/100;
+    const isNew=sel.value==='__new';const sh=log.shows.find(s=>s.id===sel.value);
+    const item={id:sale.id,showId:isNew?'':sel.value,showName:isNew?($('#cfz-newname').value.trim()||'Card show'):(sh&&sh.name)||'Card show',date:isNew?todayStr():(sh&&sh.date)||todayStr(),sale};
+    const box=cfzInbox();box.push(item);localStorage.setItem('cfz.inbox',JSON.stringify(box));
+    cfzLog(true);renderCfz().then(()=>msg('#cfz-msg','Added. Open Card Flipz and tap Save to GitHub to save it for good (it waits on this phone until then).','good'));
+  };
 }
 
 /* ---------- recent ---------- */
