@@ -455,7 +455,7 @@ async function handleCard(canvas,isCropped){
   const pv=$('#preview');pv.src=canvas.toDataURL('image/jpeg',.85);pv.hidden=false;$('#tap-tip').hidden=false;msg('#scan-msg','');pmStatus('');
   let pic=null;lastRead={};
   try{await loadPM(lang);$('#ocr-prog').hidden=false;$('#ocr-status').textContent='Matching the picture…';$('#ocr-bar').style.width='60%';
-    pic=await pictureMatch(canvas,isCropped,lang);renderMatches(pic.slice(0,16),'Best picture matches');$('#add-own').hidden=false;
+    pic=await pictureMatch(canvas,isCropped,lang);scanMatches=true;renderMatches(pic.slice(0,16),'Best picture matches');$('#add-own').hidden=false;
     $('#ocr-status').textContent='Double-checking with the card number…';
   }catch(e){pic=null;pmStatus(e.message==='nobuild'?'Picture matching isn\'t ready yet (the card catalog is still being built). Using text reading for now.':'Picture matching unavailable: '+esc(e.message)+'. Using text reading.','bad')}
   try{
@@ -659,7 +659,7 @@ async function search(lang,name,num,total){
   return out;
 }
 function score(cn,n){cn=normName(cn||'');n=normName(n||'');const b=n.replace(/(ex|gx|vmax|vstar|v|break)$/,'');if(!n)return 0;if(cn===n)return 3;if(cn.startsWith(n))return 2.5;if(cn===b)return 1.5;if(cn.startsWith(b)||cn.includes(n))return 1;return 0}
-async function doSearch(){
+async function doSearch(){scanMatches=false;
   const name=$('#f-name').value.trim(),num=$('#f-num').value.trim(),total=$('#f-total').value.trim();
   if(!name&&!num){msg('#scan-msg','Snap a card or type a name or number.','bad');return}
   const btn=$('#search-btn');btn.disabled=true;btn.textContent='Searching…';
@@ -679,7 +679,7 @@ function renderMatches(list,title){
   $('#matches').innerHTML=list.map((c,i)=>`<button class="tile" data-i="${i}"><div class="art">${c.image?`<img loading="lazy" src="${esc(imgUrl(c.image))}" alt="">`:'No picture'}</div><b>${esc(c.name)}</b><span class="sub">${esc(c.setName||'')}${c.localId?' · '+esc(c.localId)+(c.official?'/'+c.official:''):''}</span>${c.sim!=null?`<span class="row" style="gap:4px"><span class="pill ${i===0?'pos':'est'}">${Math.round(Math.max(0,c.sim)*100)}% look</span>${c.own||c.custom?'<span class="pill pos">Your card</span>':c.twin?'<span class="pill warn">Same art · English</span>':(c.lang==='ja'&&S.lang==='ja'?'<span class="pill est">Japanese</span>':'')}${(c.chips||[]).map(x=>`<span class="pill slp">${x}</span>`).join('')}</span>`:''}</button>`).join('');
   if(list.length)$('#matches-wrap').scrollIntoView({behavior:'smooth',block:'start'});
 }
-$('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t)openCard(matches[+t.dataset.i])});
+$('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(t){const m=matches[+t.dataset.i];snapFor=scanMatches?m.id:null;openCard(m)}});
 
 /* ---------- card ---------- */
 let lastMV=null,card=null,prints=[],pIdx=0,cond='LP',live={},enName='',lastRead={},jpTwin=false;
@@ -822,6 +822,7 @@ function renderSource(s){
    <div class="row"><button class="btn sm primary" data-read="${s}">${d?'Read again':'Open &amp; read'}</button><button class="btn sm" data-paste="${s}">Paste</button></div></div>
    <div class="paste" hidden><textarea rows="4" placeholder="On the ${s==='tcg'?'TCGplayer sales history':'eBay'} page: select all, copy, paste here"></textarea><div class="row" style="margin-top:6px"><button class="btn sm dark" data-parse="${s}">Use pasted text</button></div></div>
    ${body}`;
+  if(s!=='tcg'&&d&&d.items){const n=document.createElement('p');n.className='note';n.id='look-'+s;el.appendChild(n);if(lastQs&&PM.sess&&snapFor===card.id)setTimeout(()=>checkLooks(s),50);else n.textContent='Snap the card to also check listing photos against it.'}
   el.querySelector('[data-read]').onclick=()=>readSource(s,url);
   el.querySelector('[data-paste]').onclick=()=>{const p=el.querySelector('.paste');p.hidden=!p.hidden};
   el.querySelector('[data-parse]').onclick=()=>{const t=el.querySelector('textarea').value;const r=s==='tcg'?parseTcgText(t):s==='ebaySold'?parseEbaySoldText(t):parseEbayListText(t);
@@ -931,11 +932,41 @@ function filterEbay(items){
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w))};
   const scored=items.map(r=>({r,s:relevance(r,ctx)}));
-  let ok=scored.filter(x=>x.s>=0).sort((a,b)=>b.s-a.s).map(x=>x.r);
+  let ok=scored.filter(x=>x.s>=0).sort((a,b)=>(b.r.look??0)-(a.r.look??0)||b.s-a.s).map(x=>x.r);
+  // photo check: listings whose picture doesn't look like the card you snapped are left out
+  const looks=ok.map(r=>r.look).filter(v=>v!=null);
+  if(looks.length>=2){const best=Math.max(...looks);const cut=Math.max(.5,best-.12);ok=ok.filter(r=>r.look==null||r.look>=cut)}
   const tot=ok.map(r=>r.price+(r.ship||0));const med=median(tot);
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
   return {list:ok,set:new Set(ok),num:ctx.num};
 }
+
+/* ---------- photo check of eBay listings against your snap ---------- */
+const lookCache=new Map();let lookBusy=false,snapFor=null,scanMatches=false;
+function bigImg(u){return String(u||'').replace(/\/thumbs\//,'/').replace(/s-l\d+(\.\w+)$/,'s-l400$1')}
+function loadImg(u){return new Promise((res,rej)=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>res(i);i.onerror=rej;i.src=u})}
+async function checkLooks(srcKey){
+  if(lookBusy||!PM.sess||!lastQs||!card||snapFor!==card.id)return;const k=key();const d=live[srcKey];if(!d||!d.items)return;
+  // only the listings that passed the text rules, best first, capped so phones stay quick
+  const cand=filterEbay(d.items.map(r=>({...r,look:undefined}))).list.slice(0,18).filter(r=>r.img&&r.look==null);
+  const todo=cand.filter(r=>!lookCache.has(r.img));if(!todo.length&&cand.every(r=>lookCache.has(r.img))){applyLooks(srcKey);return}
+  lookBusy=true;const el=$('#look-'+srcKey);let n=0;
+  try{for(const r of todo){if(key()!==k)break;n++;if(el)el.textContent='Checking listing photos against your card… '+n+'/'+todo.length;
+      try{const im=await loadImg(bigImg(r.img));const q=await embed(im,[0,0,1,1]);let best=-9;for(const a of lastQs){let dd=0;for(let j=0;j<128;j++)dd+=q[j]*a[j];if(dd>best)best=dd}lookCache.set(r.img,best)}catch{lookCache.set(r.img,null)}}
+  }finally{lookBusy=false}
+  if(key()===k)applyLooks(srcKey);
+}
+function applyLooks(srcKey){const d=live[srcKey];if(!d||!d.items)return;let changed=false;
+  for(const r of d.items){const v=lookCache.get(r.img);if(v!=null&&r.look!==v){r.look=v;changed=true}}
+  if(changed){liveSave(key(),live);renderSource(srcKey);renderMath();guessNumber()}
+  const el=$('#look-'+srcKey);if(el)el.textContent=d.items.some(r=>r.look!=null)?'Listing photos checked against your snap. Ones that don\'t look like your card are left out.':'';}
+// Japanese twins / added cards: if photo-matched sold listings agree on a number, use it
+function guessNumber(){if(!card||!(jpTwin||card.custom)||$('#c-num').value.trim())return;
+  const items=((live.ebaySold&&live.ebaySold.items)||[]).filter(r=>r.look!=null&&r.look>=.6);const cnt={};
+  for(const r of items)for(const x of titleNums(r.title)){const kk=x.n+'/'+x.t;cnt[kk]=(cnt[kk]||0)+1}
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+  if(top&&top[1]>=2){const raw=items.map(r=>(r.title.match(/[A-Za-z]{0,4}\d{1,3}\s*\/\s*[A-Za-z]{0,4}\d{1,3}/g)||[]).find(m=>{const x=titleNums(m)[0];return x&&x.n+'/'+x.t===top[0]})).find(Boolean);
+    if(raw){$('#c-num').value=raw.replace(/\s/g,'');$('#c-num').dispatchEvent(new Event('change'));msg('#scan-msg','','');}}}
 
 /* ---------- paste parsers ---------- */
 const num=s=>{const m=String(s||'').replace(/,/g,'').match(/\d+(\.\d+)?/);return m?+m[0]:null};
