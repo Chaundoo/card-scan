@@ -307,6 +307,7 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
 <script>
 (()=>{
 'use strict';
+const DEBUG=/[?&]debug\b/.test(location.search);
 const API='https://api.tcgdex.net/v2/';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -889,6 +890,9 @@ function renderPins(){const el=$('#pins-panel');const list=(pinsAll()[pinCard()]
    <p class="note" style="margin-bottom:8px">Your proof for vendors. Kept until you unpin them (not cleared after 24 hours).</p>
    <div class="recent">${list.map(p=>`<div class="ritem" style="cursor:default">${p.img?`<img class="thumb" style="width:52px" src="${esc(p.img)}" alt="">`:'<div class="thumb" style="width:52px"></div>'}<div style="min-width:0;flex:1"><div class="ttl">${p.url?`<a href="${esc(itemUrl(p.url))}" target="_blank" rel="noopener">${esc(p.title||p.cond)}</a>`:esc(p.title||p.cond)}</div><div class="sub">${SRCNAME[p.src]||p.src}${p.date?' · '+esc(shortDate(p.date)):''}${p.printing?' · '+esc(p.printing):''}</div></div><div style="text-align:right"><b>${money(p.price)}</b>${p.ship?`<div class="sub">+${money(p.ship)}</div>`:''}<button class="pin on" data-pin="${esc(p.src)}" data-row="${esc(JSON.stringify({title:p.title,price:p.price,ship:p.ship,date:p.date,img:p.img,url:p.url,cond:p.cond}))}" aria-label="Unpin">★</button></div></div>`).join('')}</div>`}
 const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
+// other print languages as sellers write them (the word, its own spelling, or the short code)
+const OTHER_LANG=/(?:^|[^a-z])(japanese|japan|jpn|jp|korean|kor|chinese|chn|thai|indonesian|german|deutsch|deutsche|ger|deu|italian|italiano|italiana|ita|french|fran[cç]ais|francaise|fr|fra|spanish|espa[nñ]ol|espanola|spa|esp|portuguese|portugu[eê]s|por|dutch|nederlands|polish|polski|russian)(?![a-z])/;
+const LANG_NAME={japan:'Japanese',jpn:'Japanese',jp:'Japanese',japanese:'Japanese',korean:'Korean',kor:'Korean',chinese:'Chinese',chn:'Chinese',thai:'Thai',indonesian:'Indonesian',german:'German',deutsch:'German',deutsche:'German',ger:'German',deu:'German',italian:'Italian',italiano:'Italian',italiana:'Italian',ita:'Italian',french:'French','français':'French','francais':'French',francaise:'French',fr:'French',fra:'French',spanish:'Spanish','español':'Spanish',espanol:'Spanish',espanola:'Spanish',spa:'Spanish',esp:'Spanish',portuguese:'Portuguese','português':'Portuguese',portugues:'Portuguese',por:'Portuguese',dutch:'Dutch',nederlands:'Dutch',polish:'Polish',polski:'Polish',russian:'Russian'};
 let WHY='';const NO=w=>{WHY=w;return -1};
 const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag|ace grading|ace \d+|graded|slab|gem mint)\b/i;
 const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
@@ -925,8 +929,9 @@ function relevance(r,ctx){
   // must name the card
   if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return NO("title doesn't name your card");
   // language
-  if(ctx.lang==='en'&&/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/.test(t))return NO('other language');
-  if(ctx.lang==='ja'&&/\b(english|korean|chinese)\b/.test(t))return NO('other language');
+  const ol=t.match(OTHER_LANG);if(ol&&ctx.lang!=='any'){const w=ol[1];const isJa=/^(japanese|japan|jpn|jp)$/.test(w);
+    if(ctx.lang==='en'||(ctx.lang==='ja'&&!isJa))return NO((LANG_NAME[w]||w)+' card');}
+  if(ctx.lang==='ja'&&/\benglish\b/.test(t))return NO('English card');
   const saysJp=/\b(japanese|japan|jpn)\b|日本/.test(t);
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return NO('different version ('+v.toUpperCase()+')');
@@ -987,12 +992,9 @@ function filterEbay(items){
     ok=ok.filter(r=>{if(r.look==null||r.look>=cut)return true;why.set(r,"photo doesn't look like your card ("+Math.round(r.look*100)+'%)');return false})}
   // price check against the rest: way low is usually damaged, fake or a different card; way high is usually graded.
   // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
-  // titles that say the copy is beat up don't count toward near-mint math
-  ok=ok.filter(r=>{if(!/\b(damaged|dmg|creased?|heavily played|bent|water damage|poor condition)\b/i.test(r.title))return true;why.set(r,'says damaged/creased in the title');return false});
   const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.3:.4),hi=med*(strong?3:2.5);
-    if(v>=lo&&v<=hi)return true;const cc=condCode(r.title)||(/\b(crease[ds]?|bent|scratch|dent|water)\b/i.test(r.title)?'DMG':'');
-    why.set(r,v<lo?(cc&&cc!=='NM'?'played/damaged ('+cc+'), far below the others':'price far below the others: often damaged, fake or a different card'):'price far above the others: often graded or a typo');return false});
+    if(v>=lo&&v<=hi)return true;why.set(r,v<lo?'price far below the others: check the photos (fake, damaged or a different card?)':'price far above the others: often graded or a typo');return false});
   // your own calls win: tap "Count it" / "Don't count" on a row
   const ov=ls.get('ebayov',{})[key()]||{};
   for(const r of items){const o=ov[ovId(r)];if(o==='in'&&!ok.includes(r)){ok.push(r);why.delete(r)}else if(o==='out'&&ok.includes(r)){ok=ok.filter(x=>x!==r);why.set(r,'you left this one out')}}
@@ -1010,20 +1012,42 @@ function lookRefs(){const refs=[];if(!card)return refs;
   const ix=PM.idx[card.lang];if(ix&&!card.custom){if(!ix.pos){ix.pos=new Map();ix.meta.forEach((m,i)=>ix.pos.set(m[0],i))}
     const i=ix.pos.get(card.id);if(i!=null){const v=new Float32Array(128);for(let j=0;j<128;j++)v[j]=ix.vec[i*128+j]/127;refs.push(v)}}
   return refs}
+function lookArtRefs(){const refs=[];if(!card||!PM.muA)return refs;
+  if(lastQA&&lastQA.length&&snapFor===card.id)for(const q of lastQA)refs.push(q);
+  const ix=PM.idx[card.lang];if(ix&&ix.avec&&!card.custom&&ix.pos){const i=ix.pos.get(card.id);if(i!=null){const v=new Float32Array(128);let nz=false;for(let j=0;j<128;j++){v[j]=ix.avec[i*128+j]/127;if(v[j])nz=true}if(nz)refs.push(v)}}
+  return refs}
+// find the card inside a listing photo: the area that differs from the background around the edges
+function cardBox(im){const W=96,H=Math.max(24,Math.round(96*im.height/im.width));const c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(im,0,0,W,H);const d=g.getImageData(0,0,W,H).data;
+  const px=(x,y)=>{const i=(y*W+x)*4;return[d[i],d[i+1],d[i+2]]};const ring=[];
+  for(let x=0;x<W;x++){ring.push(px(x,0),px(x,1),px(x,H-1),px(x,H-2))}for(let y=0;y<H;y++){ring.push(px(0,y),px(1,y),px(W-1,y),px(W-2,y))}
+  const bg=[0,1,2].map(k=>{const a=ring.map(p=>p[k]).sort((p,q)=>p-q);return a[a.length>>1]});
+  const rows=new Array(H).fill(0),cols=new Array(W).fill(0);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=px(x,y);const dd=Math.hypot(p[0]-bg[0],p[1]-bg[1],p[2]-bg[2]);if(dd>45){rows[y]++;cols[x]++}}
+  const r0=rows.findIndex(v=>v>W*.18),r1=H-1-[...rows].reverse().findIndex(v=>v>W*.18),c0=cols.findIndex(v=>v>H*.18),c1=W-1-[...cols].reverse().findIndex(v=>v>H*.18);
+  if(r0<0||c0<0||r1<=r0||c1<=c0)return null;const bw=(c1-c0+1)/W,bh=(r1-r0+1)/H;
+  if(bw*bh<.12||bw*bh>.92)return null;const ar=(bh*im.height)/(bw*im.width);if(ar<1.1||ar>1.7)return null; // cards are ~1.4 tall
+  return [c0/W,r0/H,bw,bh]}
+// how much a listing photo looks like your card (0–1)
+async function lookScore(im,refs,arefs){let best=-9;const dot=(q,a)=>{let dd=0;for(let j=0;j<128;j++)dd+=q[j]*a[j];return dd};
+  const crops=[[0,0,1,1],[.1,.07,.8,.86]];const box=cardBox(im);if(box)crops.push(box);
+  for(const cr of crops){const q=await embed(im,cr);for(const a of refs)best=Math.max(best,dot(q,a))}
+  // artwork window of the found card: foil pattern, glare and borders matter less there (reverse holos, toploaders)
+  if(box&&arefs.length){const A=PM.art||[.08,.10,.84,.42];let f=-9,a=-9;const q=await embed(im,box);for(const r of refs)f=Math.max(f,dot(q,r));
+    for(const w of [A,[.08,.14,.84,.40]]){const qa=await embed(im,[box[0]+box[2]*w[0],box[1]+box[3]*w[1],box[2]*w[2],box[3]*w[3]],true);for(const r of arefs)a=Math.max(a,dot(qa,r))}
+    best=Math.max(best,(f+a)/2,a-.05)}
+  return best}
 async function checkLooks(srcKey){
   if(lookBusy||!card)return;const k=key();const d=live[srcKey];if(!d||!d.items)return;const el=$('#look-'+srcKey);
   // the picture matcher is only loaded here if it's already saved on this phone (no surprise 24 MB download)
   if(!PM.sess||(!card.custom&&!PM.idx[card.lang])){if(!(await pmIsCached()))return;try{await loadPM(card.custom?(S.lang||'en'):card.lang)}catch{return}if(key()!==k)return}
-  const refs=lookRefs();if(!refs.length)return;const rk=k+'|'+(snapFor===card.id?'s':'c')+'|';
+  const refs=lookRefs();if(!refs.length)return;const arefs=lookArtRefs();const rk=k+'|'+(snapFor===card.id?'s':'c')+'2|';
   // only the listings that passed the text rules, best first, capped so phones stay quick
   const cand=filterEbay(d.items.map(r=>({...r,look:undefined}))).list.slice(0,20).filter(r=>r.img);
   const todo=cand.filter(r=>!lookCache.has(rk+r.img));
   if(todo.length){lookBusy=true;let n=0;
     try{for(const r of todo){if(key()!==k)break;n++;if(el)el.textContent='Checking listing photos against your card… '+n+'/'+todo.length;
-        try{const im=await loadImg(bigImg(r.img));let best=-9;
-          // whole photo plus a tighter middle crop (most photos have table, hand or toploader around the card)
-          for(const cr of [[0,0,1,1],[.1,.07,.8,.86]]){const q=await embed(im,cr);for(const a of refs){let dd=0;for(let j=0;j<128;j++)dd+=q[j]*a[j];if(dd>best)best=dd}}
-          lookCache.set(rk+r.img,best)}catch{lookCache.set(rk+r.img,null)}}
+        try{const im=await loadImg(bigImg(r.img));lookCache.set(rk+r.img,await lookScore(im,refs,arefs))}catch{lookCache.set(rk+r.img,null)}}
     }finally{lookBusy=false}}
   if(key()===k)applyLooks(srcKey,rk);
 }
@@ -1238,6 +1262,7 @@ getSets(S.lang).catch(()=>{});
 $('#pm-ready').addEventListener('click',async()=>{const b=$('#pm-ready');b.disabled=true;
   try{await loadPM(S.lang);$('#ocr-prog').hidden=true;b.hidden=true;pmStatus('Picture matcher is ready and saved on this device.','good')}
   catch(e){$('#ocr-prog').hidden=true;b.disabled=false;pmStatus(e.message==='nobuild'?'The card catalog is still being built. Try again in a bit.':'Download failed: '+esc(e.message),'bad')}});
+if(DEBUG)window.__ccs={embed,loadPM,PM,loadImg,lookScore,lookRefs,lookArtRefs,cardBox,bigImg,get card(){return card}};
 })();
 </script>
 </body></html>
