@@ -123,6 +123,9 @@ table.t th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:
 table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
 table.t td.r,table.t th.r{text-align:right}
 table.t tr.dim td{opacity:.42}
+.lnk{background:none;border:0;padding:2px 0;color:var(--accent,#6ea8fe);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.why{font-size:12px;color:#f0b35a;margin-top:2px}
+tr.dim .why,tr.dim .lnk{opacity:1}
 .thumb{width:38px;aspect-ratio:1;border-radius:6px;object-fit:cover;background:var(--surface-2);display:block}
 .ttl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px}
 .ttl a{text-decoration:none}
@@ -822,7 +825,7 @@ function renderSource(s){
    <div class="row"><button class="btn sm primary" data-read="${s}">${d?'Read again':'Open &amp; read'}</button><button class="btn sm" data-paste="${s}">Paste</button></div></div>
    <div class="paste" hidden><textarea rows="4" placeholder="On the ${s==='tcg'?'TCGplayer sales history':'eBay'} page: select all, copy, paste here"></textarea><div class="row" style="margin-top:6px"><button class="btn sm dark" data-parse="${s}">Use pasted text</button></div></div>
    ${body}`;
-  if(s!=='tcg'&&d&&d.items){const n=document.createElement('p');n.className='note';n.id='look-'+s;el.appendChild(n);if(lastQs&&PM.sess&&snapFor===card.id)setTimeout(()=>checkLooks(s),50);else n.textContent='Snap the card to also check listing photos against it.'}
+  if(s!=='tcg'&&d&&d.items){const n=document.createElement('p');n.className='note';n.id='look-'+s;el.appendChild(n);setTimeout(()=>checkLooks(s),50)}
   el.querySelector('[data-read]').onclick=()=>readSource(s,url);
   el.querySelector('[data-paste]').onclick=()=>{const p=el.querySelector('.paste');p.hidden=!p.hidden};
   el.querySelector('[data-parse]').onclick=()=>{const t=el.querySelector('textarea').value;const r=s==='tcg'?parseTcgText(t):s==='ebaySold'?parseEbaySoldText(t):parseEbayListText(t);
@@ -858,13 +861,15 @@ function tcgTable(d){
 function ebayTable(d,s){
   const items=d.items||[];if(!items.length)return'<p class="note">No listings came through.</p>';
   const f=filterEbay(items),keep=f.set;
-  const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
+  const ctl=r=>{const id=ovId(r),o=f.ov[id];if(keep.has(r))return o==='in'?`<div class="sub">Counted by you · <button class="lnk" data-ov="${esc(id)}">undo</button></div>`:`<button class="lnk sub" data-ov="${esc(id)}" data-v="out">Don't count</button>`;
+    return `<div class="why">${esc(f.why.get(r)||'')}</div>${o==='out'?`<button class="lnk" data-ov="${esc(id)}">undo</button>`:`<button class="lnk" data-ov="${esc(id)}" data-v="in">＋ Count it</button>`}`};
+  const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div>${ctl(r)}</td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
   const head=`<tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>`;
   const rest=items.filter(r=>!keep.has(r));
   return `${f.num?(f.guessedTotal?`<p class="note" style="margin:0 0 8px">Matching ${esc(f.num.n)}/${esc(f.guessedTotal)} (set total worked out from the listings). If that's wrong, type the full number like 008/009 above.</p>`:''):`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in the box above so only that exact card counts.</p>`}
     ${f.list.length?`<table class="t">${head}${f.list.map(row).join('')}</table>`:'<p class="note">None of these listings match your card closely enough. Check the card number above, or edit the eBay search words.</p>'}
-    ${rest.length?`<details style="margin-top:8px"><summary class="sub">${rest.length} other listing${rest.length===1?'':'s'} left out (different card, variant, number or item)</summary><table class="t" style="margin-top:6px">${head}${rest.map(row).join('')}</table></details>`:''}
-    <p class="note">Only listings that match your card count in the math. Tap ☆ to pin a sale you want to show a vendor.</p>`;
+    ${rest.length?`<details style="margin-top:8px"><summary class="sub">${rest.length} other listing${rest.length===1?'':'s'} left out. Each one says why. Tap ＋ Count it if it really is your card</summary><table class="t" style="margin-top:6px">${head}${rest.map(row).join('')}</table></details>`:''}
+    <p class="note">Only listings that match your card count in the math. Tap ☆ to pin a sale you want to show a vendor. Your Count it / Don't count choices are kept for this card.</p>`;
 }
 const itemUrl=u=>/ebay\.com/.test(u)&&!/ul_noapp/.test(u)?u+(u.includes('?')?'&':'?')+'ul_noapp=1#ul_noapp':u;
 /* ---------- pinned comps (kept until you unpin) ---------- */
@@ -884,7 +889,9 @@ function renderPins(){const el=$('#pins-panel');const list=(pinsAll()[pinCard()]
    <p class="note" style="margin-bottom:8px">Your proof for vendors. Kept until you unpin them (not cleared after 24 hours).</p>
    <div class="recent">${list.map(p=>`<div class="ritem" style="cursor:default">${p.img?`<img class="thumb" style="width:52px" src="${esc(p.img)}" alt="">`:'<div class="thumb" style="width:52px"></div>'}<div style="min-width:0;flex:1"><div class="ttl">${p.url?`<a href="${esc(itemUrl(p.url))}" target="_blank" rel="noopener">${esc(p.title||p.cond)}</a>`:esc(p.title||p.cond)}</div><div class="sub">${SRCNAME[p.src]||p.src}${p.date?' · '+esc(shortDate(p.date)):''}${p.printing?' · '+esc(p.printing):''}</div></div><div style="text-align:right"><b>${money(p.price)}</b>${p.ship?`<div class="sub">+${money(p.ship)}</div>`:''}<button class="pin on" data-pin="${esc(p.src)}" data-row="${esc(JSON.stringify({title:p.title,price:p.price,ship:p.ship,date:p.date,img:p.img,url:p.url,cond:p.cond}))}" aria-label="Unpin">★</button></div></div>`).join('')}</div>`}
 const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
-const BAD=/\b(psa|bgs|beckett|cgc|sgc|tag|ace|graded|slab|gem mint|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
+let WHY='';const NO=w=>{WHY=w;return -1};
+const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag|ace grading|ace \d+|graded|slab|gem mint)\b/i;
+const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
 const VARIANT=['v','vmax','vstar','v-union','gx','ex','lv.x','lvx','break','prime','legend','radiant','shining','origin','forme','mega','dark','light','crystal','star','δ','delta','tera','ace spec'];
 // the card number the comps must match: typed box > TCGplayer page the helper read > scan > catalog
 function wantNumber(){
@@ -914,38 +921,42 @@ const REPRINTS=[/25th anniversary|anniversary collection|\bs8a\b/,/\bcelebration
 function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?![\d.])/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
 function relevance(r,ctx){
   const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ')+' ';
-  if(!(r.price>0)||BAD.test(r.title))return -1;
+  if(!(r.price>0))return NO('no price');if(GRADED.test(r.title))return NO('graded slab');if(BAD.test(r.title))return NO('not a single raw card (lot, sealed, proxy, accessory…)');
   // must name the card
-  if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return -1;
+  if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return NO("title doesn't name your card");
   // language
-  if(ctx.lang==='en'&&/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/.test(t))return -1;
-  if(ctx.lang==='ja'&&/\b(english|korean|chinese)\b/.test(t))return -1;
+  if(ctx.lang==='en'&&/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/.test(t))return NO('other language');
+  if(ctx.lang==='ja'&&/\b(english|korean|chinese)\b/.test(t))return NO('other language');
   const saysJp=/\b(japanese|japan|jpn)\b|日本/.test(t);
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
-  for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return -1;
-  if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return -1;
-  if(!ctx.first&&/\b1st\b|first edition/.test(t))return -1;
+  for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return NO('different version ('+v.toUpperCase()+')');
+  if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return NO('reverse holo');
+  if(!ctx.first&&/\b1st\b|first edition/.test(t))return NO('1st edition');
   // wrong era: a year in the title far from when your card came out (e.g. "2021 … 25th Anniversary" for a 2008 card)
-  if(ctx.yr){const ys=[...t.matchAll(/(?<![\d$.])(199[6-9]|20[0-3]\d)(?![\d.])/g)].map(m=>+m[1]);if(ys.length&&!ys.some(y=>y>=ctx.yr.lo&&y<=ctx.yr.hi))return -1}
+  if(ctx.yr){const ys=[...t.matchAll(/(?<![\d$.])(199[6-9]|20[0-3]\d)(?![\d.])/g)].map(m=>+m[1]);if(ys.length&&!ys.some(y=>y>=ctx.yr.lo&&y<=ctx.yr.hi))return NO('year in title is from a different print')}
   // reprint sets that reuse the same art and number
-  for(const re of REPRINTS)if(re.test(t)&&!re.test(ctx.setLc))return -1;
+  for(const re of REPRINTS)if(re.test(t)&&!re.test(ctx.setLc))return NO('reprint set');
   // a Japanese set code that doesn't fit: different code than your card's, or from a different era
   const code=parseJaSet(r.title);
-  if(code){if(ctx.jaCode&&code.toLowerCase()!==ctx.jaCode.toLowerCase())return -1;
-    const era=jaCodeYears(code);if(!ctx.jaCode&&ctx.yr&&era&&(era[1]<ctx.yr.lo||era[0]>ctx.yr.hi))return -1}
+  if(code){if(ctx.jaCode&&code.toLowerCase()!==ctx.jaCode.toLowerCase())return NO('different Japanese set');
+    const era=jaCodeYears(code);if(!ctx.jaCode&&ctx.yr&&era&&(era[1]<ctx.yr.lo||era[0]>ctx.yr.hi))return NO('different Japanese set')}
   let score=1;const nums=titleNums(r.title);
   if(ctx.num){const hit=nums.some(x=>x.n===ctx.num.n&&(!ctx.num.t||!x.t||x.t===ctx.num.t));
-    if(nums.length&&!hit)return -1; // different card number
+    if(nums.length&&!hit)return NO('different card number'); // different card number
     if(hit)score+=3}
-  if(ctx.lang==='ja'&&!saysJp&&score<4)return -1; // Japanese card: title must say Japanese unless the number matches exactly
+  if(ctx.lang==='ja'&&!saysJp&&score<4)return NO("doesn't say Japanese"); // Japanese card: title must say Japanese unless the number matches exactly
   // other Pokémon named in the title: only allowed when the card number confirms it
   const others=ctx.species.filter(sp=>!ctx.nameTokens.has(sp)&&new RegExp('(^|[^a-z])'+sp+'(?![a-z])').test(t));
-  if(others.length&&score<4)return -1;
+  if(others.length&&score<4)return NO('names another Pokémon');
   const setHits=ctx.setWords.filter(w=>t.includes(w)).length;score+=setHits*.5;
-  if(ctx.num&&!nums.length&&ctx.setWords.length&&!setHits)return -1; // no number and no set named: can't tell it's your card
+  if(ctx.num&&!nums.length&&ctx.setWords.length&&!setHits)return NO('no number or set in title'); // no number and no set named: can't tell it's your card
   return score;
 }
 let SPECIES_LC=null;
+const ovId=r=>(r.title||'')+'|'+r.price+'|'+(r.date||'');
+function setOv(id,v){const a=ls.get('ebayov',{}),k=key();const o=a[k]||{};if(v)o[id]=v;else delete o[id];if(Object.keys(o).length)a[k]=o;else delete a[k];
+  const ks=Object.keys(a);if(ks.length>80)delete a[ks[0]];ls.set('ebayov',a);renderSources();renderMath()}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-ov]');if(!b)return;e.preventDefault();setOv(b.dataset.ov,b.dataset.v||null)});
 function filterEbay(items){
   if(!card)return {list:items,set:new Set(items),ranked:items};
   const name=(card.custom?card.name:(enName||card.name)).toLowerCase().replace(/[-–]/g,' ');
@@ -956,7 +967,8 @@ function filterEbay(items){
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
     yr:yearWindow(),setLc:setName,jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
-  let scored=items.map(r=>({r,s:relevance(r,ctx)}));
+  const rel=r=>{WHY='';const s=relevance(r,ctx);return {r,s,why:WHY}};
+  let scored=items.map(rel);
   // number typed without the set total (e.g. "008"): work out the total from the listings that are left.
   // Photo-matched listings decide first; otherwise the total most of the remaining number matches agree on.
   let guessedTotal='';
@@ -964,37 +976,59 @@ function filterEbay(items){
     for(const x of scored){if(x.s<0)continue;const w=x.r.look!=null?(x.r.look>=.6?3:x.r.look<.45?0:1):1;
       for(const k of titleNums(x.r.title))if(k.n===ctx.num.n&&k.t)cnt[k.t]=(cnt[k.t]||0)+w}
     const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
-    if(top.length&&top[0][1]>=2&&(top.length===1||top[0][1]>=top[1][1]*1.5)){guessedTotal=top[0][0];ctx.num={...ctx.num,t:guessedTotal};scored=items.map(r=>({r,s:relevance(r,ctx)}))}}
+    if(top.length&&top[0][1]>=2&&(top.length===1||top[0][1]>=top[1][1]*1.5)){guessedTotal=top[0][0];ctx.num={...ctx.num,t:guessedTotal};scored=items.map(rel)}}
   // once some listings show your exact number, drop the ones that name no number and no set (can't tell which card they are)
-  if(ctx.num&&scored.some(x=>x.s>=4))scored=scored.map(x=>x.s>=0&&x.s<1.5&&!titleNums(x.r.title).length&&!(x.r.look>=.6)?{...x,s:-1}:x);
+  if(ctx.num&&scored.some(x=>x.s>=4))scored=scored.map(x=>x.s>=0&&x.s<1.5&&!titleNums(x.r.title).length&&!(x.r.look>=.6)?{...x,s:-1,why:'no number in title'}:x);
+  const why=new Map();for(const x of scored)if(x.s<0)why.set(x.r,x.why||'not your card');
   let ok=scored.filter(x=>x.s>=0).sort((a,b)=>(b.r.look??0)-(a.r.look??0)||b.s-a.s).map(x=>x.r);
-  // photo check: listings whose picture doesn't look like the card you snapped are left out
+  // photo check: only clearly different pictures are left out (hand photos with glare or a toploader still pass)
   const looks=ok.map(r=>r.look).filter(v=>v!=null);
-  if(looks.length){const best=Math.max(...looks);const cut=Math.min(.55,Math.max(.45,best-.25));ok=ok.filter(r=>r.look==null||r.look>=cut)}
-  const tot=ok.map(r=>r.price+(r.ship||0));const med=median(tot);
-  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
-  return {list:ok,set:new Set(ok),num:ctx.num,guessedTotal};
+  if(looks.length){const best=Math.max(...looks);const cut=Math.max(.36,Math.min(.48,best-.3));
+    ok=ok.filter(r=>{if(r.look==null||r.look>=cut)return true;why.set(r,"photo doesn't look like your card ("+Math.round(r.look*100)+'%)');return false})}
+  // price check against the rest: way low is usually damaged, fake or a different card; way high is usually graded.
+  // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
+  const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
+  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.3:.4),hi=med*(strong?3:2.5);
+    if(v>=lo&&v<=hi)return true;const cc=condCode(r.title)||(/\b(crease[ds]?|bent|scratch|dent|water)\b/i.test(r.title)?'DMG':'');
+    why.set(r,v<lo?(cc&&cc!=='NM'?'played/damaged ('+cc+'), far below the others':'price far below the others: often damaged, fake or a different card'):'price far above the others: often graded or a typo');return false});
+  // your own calls win: tap "Count it" / "Don't count" on a row
+  const ov=ls.get('ebayov',{})[key()]||{};
+  for(const r of items){const o=ov[ovId(r)];if(o==='in'&&!ok.includes(r)){ok.push(r);why.delete(r)}else if(o==='out'&&ok.includes(r)){ok=ok.filter(x=>x!==r);why.set(r,'you left this one out')}}
+  return {list:ok,set:new Set(ok),num:ctx.num,guessedTotal,why,ov};
 }
 
 /* ---------- photo check of eBay listings against your snap ---------- */
 const lookCache=new Map();let lookBusy=false,snapFor=null,scanMatches=false;
 function bigImg(u){return String(u||'').replace(/\/thumbs\//,'/').replace(/s-l\d+(\.\w+)$/,'s-l400$1')}
 function loadImg(u){return new Promise((res,rej)=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>res(i);i.onerror=rej;i.src=u})}
+// what a listing photo is compared to: your snap (when you opened the card from a scan), the catalog picture of the card, and cards you added
+function lookRefs(){const refs=[];if(!card)return refs;
+  if(lastQs&&snapFor===card.id)for(const q of lastQs)refs.push(q);
+  if(card.custom&&card.vecs)for(const v of card.vecs)refs.push(Float32Array.from(v));
+  const ix=PM.idx[card.lang];if(ix&&!card.custom){if(!ix.pos){ix.pos=new Map();ix.meta.forEach((m,i)=>ix.pos.set(m[0],i))}
+    const i=ix.pos.get(card.id);if(i!=null){const v=new Float32Array(128);for(let j=0;j<128;j++)v[j]=ix.vec[i*128+j]/127;refs.push(v)}}
+  return refs}
 async function checkLooks(srcKey){
-  if(lookBusy||!PM.sess||!lastQs||!card||snapFor!==card.id)return;const k=key();const d=live[srcKey];if(!d||!d.items)return;
+  if(lookBusy||!card)return;const k=key();const d=live[srcKey];if(!d||!d.items)return;const el=$('#look-'+srcKey);
+  // the picture matcher is only loaded here if it's already saved on this phone (no surprise 24 MB download)
+  if(!PM.sess||(!card.custom&&!PM.idx[card.lang])){if(!(await pmIsCached()))return;try{await loadPM(card.custom?(S.lang||'en'):card.lang)}catch{return}if(key()!==k)return}
+  const refs=lookRefs();if(!refs.length)return;const rk=k+'|'+(snapFor===card.id?'s':'c')+'|';
   // only the listings that passed the text rules, best first, capped so phones stay quick
-  const cand=filterEbay(d.items.map(r=>({...r,look:undefined}))).list.slice(0,18).filter(r=>r.img&&r.look==null);
-  const todo=cand.filter(r=>!lookCache.has(r.img));if(!todo.length&&cand.every(r=>lookCache.has(r.img))){applyLooks(srcKey);return}
-  lookBusy=true;const el=$('#look-'+srcKey);let n=0;
-  try{for(const r of todo){if(key()!==k)break;n++;if(el)el.textContent='Checking listing photos against your card… '+n+'/'+todo.length;
-      try{const im=await loadImg(bigImg(r.img));const q=await embed(im,[0,0,1,1]);let best=-9;for(const a of lastQs){let dd=0;for(let j=0;j<128;j++)dd+=q[j]*a[j];if(dd>best)best=dd}lookCache.set(r.img,best)}catch{lookCache.set(r.img,null)}}
-  }finally{lookBusy=false}
-  if(key()===k)applyLooks(srcKey);
+  const cand=filterEbay(d.items.map(r=>({...r,look:undefined}))).list.slice(0,20).filter(r=>r.img);
+  const todo=cand.filter(r=>!lookCache.has(rk+r.img));
+  if(todo.length){lookBusy=true;let n=0;
+    try{for(const r of todo){if(key()!==k)break;n++;if(el)el.textContent='Checking listing photos against your card… '+n+'/'+todo.length;
+        try{const im=await loadImg(bigImg(r.img));let best=-9;
+          // whole photo plus a tighter middle crop (most photos have table, hand or toploader around the card)
+          for(const cr of [[0,0,1,1],[.1,.07,.8,.86]]){const q=await embed(im,cr);for(const a of refs){let dd=0;for(let j=0;j<128;j++)dd+=q[j]*a[j];if(dd>best)best=dd}}
+          lookCache.set(rk+r.img,best)}catch{lookCache.set(rk+r.img,null)}}
+    }finally{lookBusy=false}}
+  if(key()===k)applyLooks(srcKey,rk);
 }
-function applyLooks(srcKey){const d=live[srcKey];if(!d||!d.items)return;let changed=false;
-  for(const r of d.items){const v=lookCache.get(r.img);if(v!=null&&r.look!==v){r.look=v;changed=true}}
+function applyLooks(srcKey,rk){const d=live[srcKey];if(!d||!d.items)return;let changed=false;
+  for(const r of d.items){const v=lookCache.get(rk+r.img);if(v!=null&&r.look!==v){r.look=v;changed=true}}
   if(changed){liveSave(key(),live);renderSource(srcKey);renderMath();guessNumber()}
-  const el=$('#look-'+srcKey);if(el)el.textContent=d.items.some(r=>r.look!=null)?'Listing photos checked against your snap. Ones that don\'t look like your card are left out.':'';}
+  const el=$('#look-'+srcKey);if(el)el.textContent=d.items.some(r=>r.look!=null)?'Listing photos checked against '+(snapFor===card.id?'your snap and ':'')+'the card\'s picture. Ones that clearly show a different card are left out.':'';}
 // Japanese twins / added cards: if photo-matched sold listings agree on a number, use it
 function guessNumber(){if(!card||!(jpTwin||card.custom)||$('#c-num').value.trim())return;
   const items=((live.ebaySold&&live.ebaySold.items)||[]).filter(r=>r.look!=null&&r.look>=.6);const cnt={};
