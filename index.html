@@ -758,7 +758,7 @@ function ebayQuery(){
 function links(){
   const p=prints[pIdx]||{};const q=$('#c-q').value.trim()||ebayQuery();
   const ex=' -psa -bgs -cgc -sgc -graded -lot';
-  const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
+  const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name+(lastRead.num&&/^\d+$/.test(lastRead.num)?' '+lastRead.num.padStart(3,'0'):'')):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
   return {
     tcg,
     ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&ul_noapp=1#ul_noapp',
@@ -786,7 +786,7 @@ function renderQuick(){
 }
 function renderLinks(){
   const L=links();
-  $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">TCGplayer <small>${prints[pIdx]&&prints[pIdx].pid?'product':'search'}</small></a>
+  $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">TCGplayer <small>${!jpTwin&&!card.custom&&prints[pIdx]&&prints[pIdx].pid?'product':'search · tap your card'}</small></a>
   <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">eBay last sold <small>raw only</small></a>
   <a class="btn" href="go.html?u=${encodeURIComponent(L.ebayList)}" target="_blank" rel="noopener">eBay listings <small>Buy It Now</small></a>
   <a class="btn" href="${esc(L.pc)}" target="_blank" rel="noopener">PriceCharting <small>extra check</small></a>`;
@@ -823,7 +823,7 @@ function renderSource(s){
 function timeAgo(t){const m=Math.round((Date.now()-t)/6e4);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' hr ago'}
 function readSource(s,url){
   const p=prints[pIdx]||{};
-  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+' '+card.localId,productId:p.pid||null,cond},location.origin);
+  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+(jpTwin?' (Japanese)':' '+card.localId),productId:(jpTwin||card.custom)?null:(p.pid||null),pick:s==='tcg'&&!/\/product\//.test(url),cond},location.origin);
   else if(!sessionStorage.getItem('ccs.nohelper')){sessionStorage.setItem('ccs.nohelper','1');setTimeout(()=>alert('Helper not installed, so the page will just open. Copy the page and use Paste, or set up the helper on the Helper tab.'),50)}
   window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
@@ -1071,7 +1071,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.1.0'?' <b>An update (v1.1.0) is available:</b> open the helper script link below again and install it to get smarter eBay retries.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.2.0'?' <b>An update (v1.2.0) is available:</b> open the helper script link below again and install it (it now follows you from TCGplayer search results to the card you tap).':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});
