@@ -987,6 +987,8 @@ function filterEbay(items){
     ok=ok.filter(r=>{if(r.look==null||r.look>=cut)return true;why.set(r,"photo doesn't look like your card ("+Math.round(r.look*100)+'%)');return false})}
   // price check against the rest: way low is usually damaged, fake or a different card; way high is usually graded.
   // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
+  // titles that say the copy is beat up don't count toward near-mint math
+  ok=ok.filter(r=>{if(!/\b(damaged|dmg|creased?|heavily played|bent|water damage|poor condition)\b/i.test(r.title))return true;why.set(r,'says damaged/creased in the title');return false});
   const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.3:.4),hi=med*(strong?3:2.5);
     if(v>=lo&&v<=hi)return true;const cc=condCode(r.title)||(/\b(crease[ds]?|bent|scratch|dent|water)\b/i.test(r.title)?'DMG':'');
