@@ -242,7 +242,10 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
           </div>
         </div>
         <div class="kvs" id="c-quick" style="margin-top:12px"></div>
-        <label class="field" style="margin-top:12px"><span>eBay search words (edit if results look off)</span><input id="c-q" autocomplete="off"></label>
+        <div class="row" style="margin-top:12px">
+          <label class="field" style="flex:0 1 150px"><span>Card number</span><input id="c-num" placeholder="008/009" autocomplete="off" autocapitalize="characters"></label>
+          <label class="field" style="flex:1 1 180px"><span>eBay search words (edit if results look off)</span><input id="c-q" autocomplete="off"></label>
+        </div>
         <div class="links" id="c-links"></div>
       </div>
 
@@ -279,13 +282,13 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.2.1">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.2.1">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.2.1">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -737,8 +740,9 @@ function buildPrints(c){
   return out;
 }
 function ebayQuery(){
-  if(card.custom)return card.name+(card.lang==='ja'&&!/japan/i.test(card.name)?' japanese':'')+(card.localId?' '+card.localId:'');
-  if(jpTwin){const n=lastRead.num?(lastRead.num+(lastRead.total&&/^\d+$/.test(lastRead.total)?'/'+lastRead.total:'')):'';return [card.name,n,'japanese'].filter(Boolean).join(' ')}
+  const typedNum=($('#c-num')&&$('#c-num').value.trim())||'';
+  if(card.custom)return card.name+(card.lang==='ja'&&!/japan/i.test(card.name)?' japanese':'')+(typedNum||card.localId?' '+(typedNum||card.localId):'');
+  if(jpTwin)return [card.name,typedNum,'japanese'].filter(Boolean).join(' ');
   const p=prints[pIdx]||{};
   // eBay needs every word in the title, so keep only words sellers actually type
   const nm=(enName||card.name).replace(/\b(with|the|of)\b/gi,' ').replace(/[-–]/g,' ').replace(/[δ★☆]/g,'').replace(/\s+/g,' ').trim();
@@ -772,6 +776,9 @@ function renderCard(){
   $('#c-set').textContent=card.custom?['Added by you',card.localId,card.lang==='ja'?'Japanese':'English'].filter(Boolean).join(' · '):(jpTwin?'Japanese version of this art · English twin: ':'')+[c.set&&c.set.name,c.localId+(off&&/^\d+$/.test(c.localId)?'/'+off:''),c.rarity,(jpTwin?'':c.lang==='ja'?'Japanese':'English')].filter(Boolean).join(' · ');
   $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}${p.tcg&&p.tcg.marketPrice!=null?' · '+money(p.tcg.marketPrice):''}</option>`).join('');$('#c-print').value=pIdx;
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
+  { const saved=ls.get('cnum',{})[(jpTwin?'jt':card.lang)+':'+card.id];const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
+    $('#c-num').value=saved!=null?saved:(jpTwin||card.custom)?(lastRead.num?lastRead.num+(/^\d+$/.test(lastRead.total||'')?'/'+lastRead.total:''):((live.tcg&&live.tcg.number)||'')):(card.localId?card.localId+(/^\d+$/.test(card.localId)&&off?'/'+off:''):'');
+    $('#c-num').placeholder=jpTwin?'your card\'s number':'008/009'; }
   $('#c-q').value=ebayQuery();
   live=liveStore.get(key())||liveLoad(key())||{};liveStore.set(key(),live);document.documentElement.dataset.ccsKey=key();
   renderQuick();renderLinks();renderSources();renderMath();renderPins();renderCfz();
@@ -794,6 +801,7 @@ function renderLinks(){
 $('#c-print').addEventListener('change',e=>{pIdx=+e.target.value;renderCard()});
 $('#cond-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cond=b.dataset.c;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x===b));renderSources();renderMath();const f=$('#cfz-from');if(f){f.value=CFZ_CONDS[cond];$('#cfz-to').value=CFZ_CONDS[cond]}});
 $('#c-q').addEventListener('change',()=>renderLinks());
+$('#c-num').addEventListener('change',()=>{if(!card)return;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=$('#c-num').value.trim();ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks();renderSources();renderMath()});
 $('#c-sticker').addEventListener('input',renderMath);
 
 /* ---------- live sources ---------- */
@@ -829,7 +837,8 @@ function readSource(s,url){
 }
 function gotLive(k,s,payload){
   const cur=liveStore.get(k)||liveLoad(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
-  cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);if(k===key()){live=cur;renderSource(s);renderMath()}
+  cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);
+  if(s==='tcg'&&k===key()&&card&&(jpTwin||card.custom)&&payload.number&&!$('#c-num').value.trim()){$('#c-num').value=payload.number;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=payload.number;ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks()}if(k===key()){live=cur;renderSource(s);renderMath()}
 }
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='result'||!d.payload)return;gotLive(d.key,d.source,d.payload)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&helperOn()&&card)window.postMessage({ccs:'poll',key:key()},location.origin)});
@@ -847,8 +856,14 @@ function tcgTable(d){
 }
 function ebayTable(d,s){
   const items=d.items||[];if(!items.length)return'<p class="note">No listings came through.</p>';
-  const keep=filterEbay(items).set;
-  return `<table class="t"><tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>${items.map((r,i)=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`).join('')}</table><p class="note">Faded rows are left out of the math (graded, lots, wrong language, or far-off prices). Tap ☆ to pin a sale you want to show a vendor.</p>`;
+  const f=filterEbay(items),keep=f.set;
+  const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
+  const head=`<tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>`;
+  const rest=items.filter(r=>!keep.has(r));
+  return `${f.num?'':`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in the box above so only that exact card counts.</p>`}
+    ${f.list.length?`<table class="t">${head}${f.list.map(row).join('')}</table>`:'<p class="note">None of these listings match your card closely enough. Check the card number above, or edit the eBay search words.</p>'}
+    ${rest.length?`<details style="margin-top:8px"><summary class="sub">${rest.length} other listing${rest.length===1?'':'s'} left out (different card, variant, number or item)</summary><table class="t" style="margin-top:6px">${head}${rest.map(row).join('')}</table></details>`:''}
+    <p class="note">Only listings that match your card count in the math. Tap ☆ to pin a sale you want to show a vendor.</p>`;
 }
 const itemUrl=u=>/ebay\.com/.test(u)&&!/ul_noapp/.test(u)?u+(u.includes('?')?'&':'?')+'ul_noapp=1#ul_noapp':u;
 /* ---------- pinned comps (kept until you unpin) ---------- */
@@ -868,20 +883,58 @@ function renderPins(){const el=$('#pins-panel');const list=(pinsAll()[pinCard()]
    <p class="note" style="margin-bottom:8px">Your proof for vendors. Kept until you unpin them (not cleared after 24 hours).</p>
    <div class="recent">${list.map(p=>`<div class="ritem" style="cursor:default">${p.img?`<img class="thumb" style="width:52px" src="${esc(p.img)}" alt="">`:'<div class="thumb" style="width:52px"></div>'}<div style="min-width:0;flex:1"><div class="ttl">${p.url?`<a href="${esc(itemUrl(p.url))}" target="_blank" rel="noopener">${esc(p.title||p.cond)}</a>`:esc(p.title||p.cond)}</div><div class="sub">${SRCNAME[p.src]||p.src}${p.date?' · '+esc(shortDate(p.date)):''}${p.printing?' · '+esc(p.printing):''}</div></div><div style="text-align:right"><b>${money(p.price)}</b>${p.ship?`<div class="sub">+${money(p.ship)}</div>`:''}<button class="pin on" data-pin="${esc(p.src)}" data-row="${esc(JSON.stringify({title:p.title,price:p.price,ship:p.ship,date:p.date,img:p.img,url:p.url,cond:p.cond}))}" aria-label="Unpin">★</button></div></div>`).join('')}</div>`}
 const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
-const BAD=/\b(psa|bgs|beckett|cgc|sgc|tag|ace|graded|slab|gem mint|lot|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack)\b/i;
+const BAD=/\b(psa|bgs|beckett|cgc|sgc|tag|ace|graded|slab|gem mint|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
+const VARIANT=['v','vmax','vstar','v-union','gx','ex','lv.x','lvx','break','prime','legend','radiant','shining','origin','forme','mega','dark','light','crystal','star','δ','delta','tera','ace spec'];
+// the card number the comps must match: typed box > TCGplayer page the helper read > scan > catalog
+function wantNumber(){
+  const typed=($('#c-num')&&$('#c-num').value.trim())||'';
+  let n='',t='';const m=typed.match(/^([A-Za-z-]*\d{1,3})\s*(?:\/\s*([A-Za-z-]*\d{1,3}))?$/);
+  if(m){n=m[1];t=m[2]||''}
+  else if((jpTwin||card.custom)&&live.tcg&&live.tcg.number){const k=String(live.tcg.number).match(/([A-Za-z-]*\d{1,3})\s*(?:\/\s*([A-Za-z-]*\d{1,3}))?/);if(k){n=k[1];t=k[2]||''}}
+  else if((jpTwin||card.custom)&&lastRead.num){n=lastRead.num;t=/^\d+$/.test(lastRead.total||'')?lastRead.total:''}
+  else if(!jpTwin&&!card.custom&&card.localId){n=card.localId;const off=card.set&&card.set.cardCount&&card.set.cardCount.official;t=/^\d+$/.test(card.localId)&&off?String(off):''}
+  return n?{n:normNum(n),t:t?normNum(t):''}:null}
+function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?![\d.])/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
+function relevance(r,ctx){
+  const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ')+' ';
+  if(!(r.price>0)||BAD.test(r.title))return -1;
+  // must name the card
+  if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return -1;
+  // language
+  if(ctx.lang==='en'&&/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/.test(t))return -1;
+  if(ctx.lang==='ja'&&/\b(english|korean|chinese)\b/.test(t))return -1;
+  const saysJp=/\b(japanese|japan|jpn)\b|日本/.test(t);
+  // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
+  for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return -1;
+  if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return -1;
+  if(!ctx.first&&/\b1st\b|first edition/.test(t))return -1;
+  let score=1;const nums=titleNums(r.title);
+  if(ctx.num){const hit=nums.some(x=>x.n===ctx.num.n&&(!ctx.num.t||!x.t||x.t===ctx.num.t));
+    if(nums.length&&!hit)return -1; // different card number
+    if(hit)score+=3}
+  if(ctx.lang==='ja'&&!saysJp&&score<4)return -1; // Japanese card: title must say Japanese unless the number matches exactly
+  // other Pokémon named in the title: only allowed when the card number confirms it
+  const others=ctx.species.filter(sp=>!ctx.nameTokens.has(sp)&&new RegExp('(^|[^a-z])'+sp+'(?![a-z])').test(t));
+  if(others.length&&score<4)return -1;
+  const setHits=ctx.setWords.filter(w=>t.includes(w)).length;score+=setHits*.5;
+  if(ctx.num&&!nums.length&&ctx.setWords.length&&!setHits)return -1; // no number and no set named: can't tell it's your card
+  return score;
+}
+let SPECIES_LC=null;
 function filterEbay(items){
-  let ok=items.filter(r=>r.price>0&&!BAD.test(r.title));
-  // the title must mention the card (eBay pads thin searches with loosely related listings)
-  if(card){const words=((card.custom?card.name:(jpTwin?card.name:(enName||card.name)))).toLowerCase().replace(/\b(with|the|of|japanese|promo)\b/g,' ').split(/[^a-z0-9']+/).filter(w=>w.length>=3);
-    if(words.length){const need=words.slice(0,4);ok=ok.filter(r=>{const t=r.title.toLowerCase();return need.filter(w=>t.includes(w)).length>=Math.ceil(need.length*.75)})}}
-  if(card&&card.lang==='en')ok=ok.filter(r=>!/\b(japanese|japan|jpn|korean|chinese|thai|indonesian)\b/i.test(r.title));
-  if(card&&card.lang==='ja')ok=ok.filter(r=>!/\b(english|korean|chinese)\b/i.test(r.title));
-  const p=prints[pIdx]||{};
-  if(p.type!=='reverse')ok=ok.filter(r=>!/\breverse\b/i.test(r.title));
-  if(!(p.stamps||[]).some(s=>/1st/i.test(s)))ok=ok.filter(r=>!/\b1st\b|first edition/i.test(r.title));
+  if(!card)return {list:items,set:new Set(items),ranked:items};
+  const name=(card.custom?card.name:(enName||card.name)).toLowerCase().replace(/[-–]/g,' ');
+  const words=name.replace(/\b(with|the|of|japanese|promo)\b/g,' ').split(/[^a-z0-9'.δ]+/).filter(w=>w.length>=3);
+  const nameTokens=new Set(name.split(/[^a-z0-9'.δ]+/).filter(Boolean));if(nameTokens.has('m'))nameTokens.add('mega');
+  if(!SPECIES_LC)SPECIES_LC=SPECIES.map(x=>x.toLowerCase()).filter(x=>x.length>=4&&!/[^a-z]/.test(x));
+  const setName=((live.tcg&&live.tcg.setName)||(!jpTwin&&card.set&&card.set.name)||'').toLowerCase();
+  const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
+    num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w))};
+  const scored=items.map(r=>({r,s:relevance(r,ctx)}));
+  let ok=scored.filter(x=>x.s>=0).sort((a,b)=>b.s-a.s).map(x=>x.r);
   const tot=ok.map(r=>r.price+(r.ship||0));const med=median(tot);
-  if(med)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
-  return {list:ok,set:new Set(ok)};
+  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
+  return {list:ok,set:new Set(ok),num:ctx.num};
 }
 
 /* ---------- paste parsers ---------- */
@@ -1071,7 +1124,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.2.1'?' <b>An update (v1.2.1) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.2.1&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.1 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.2.2'?' <b>An update (v1.2.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.2.2&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});

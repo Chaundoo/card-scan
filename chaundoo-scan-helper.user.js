@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.2.1
+// @version      1.2.2
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -18,7 +18,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.2.1';
+  const VER = '1.2.2';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -89,7 +89,11 @@
     await sleep(600);
     const rowVal = (root, label) => { for (const tr of (root || document).querySelectorAll('tr')) { const td = tr.querySelectorAll('td'); if (td.length >= 2 && txt(td[0]).startsWith(label)) return num(txt(td[1])); } return null; };
     const pts = document.querySelector('.price-guide__points-container') || document;
-    const out = { market: rowVal(pts, 'Market Price'), recent: rowVal(pts, 'Most Recent Sale'), condLabel: txt(document.querySelector('.price-guide__points-condition')), sales: [], listings: [] };
+    const bodyT = document.body.innerText || '';
+    const nm = bodyT.match(/Card Number[^:]*:\s*([A-Za-z-]*\d+(?:\s*\/\s*[A-Za-z-]*\d+)?)/i);
+    const h1 = txt(document.querySelector('h1'));
+    const extra = { number: nm ? nm[1].replace(/\s/g, '') : '', title: h1, setName: h1.includes(' - ') ? h1.split(' - ').slice(1).join(' - ').replace(/\s*\([^)]*\)\s*$/, '') : '' };
+    const out = { market: rowVal(pts, 'Market Price'), recent: rowVal(pts, 'Most Recent Sale'), condLabel: txt(document.querySelector('.price-guide__points-condition')), sales: [], listings: [], ...extra };
     // open the sales history snapshot (same as tapping "View More Data")
     let rowsEl = document.querySelector('.latest-sales-table__tbody tr');
     if (!rowsEl) {
