@@ -935,7 +935,7 @@ function filterEbay(items){
   let ok=scored.filter(x=>x.s>=0).sort((a,b)=>(b.r.look??0)-(a.r.look??0)||b.s-a.s).map(x=>x.r);
   // photo check: listings whose picture doesn't look like the card you snapped are left out
   const looks=ok.map(r=>r.look).filter(v=>v!=null);
-  if(looks.length>=2){const best=Math.max(...looks);const cut=Math.max(.5,best-.12);ok=ok.filter(r=>r.look==null||r.look>=cut)}
+  if(looks.length){const best=Math.max(...looks);const cut=Math.min(.55,Math.max(.45,best-.25));ok=ok.filter(r=>r.look==null||r.look>=cut)}
   const tot=ok.map(r=>r.price+(r.ship||0));const med=median(tot);
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
   return {list:ok,set:new Set(ok),num:ctx.num};
