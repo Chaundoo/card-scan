@@ -861,7 +861,7 @@ function ebayTable(d,s){
   const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div></td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
   const head=`<tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>`;
   const rest=items.filter(r=>!keep.has(r));
-  return `${f.num?'':`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in the box above so only that exact card counts.</p>`}
+  return `${f.num?(f.guessedTotal?`<p class="note" style="margin:0 0 8px">Matching ${esc(f.num.n)}/${esc(f.guessedTotal)} (set total worked out from the listings). If that's wrong, type the full number like 008/009 above.</p>`:''):`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in the box above so only that exact card counts.</p>`}
     ${f.list.length?`<table class="t">${head}${f.list.map(row).join('')}</table>`:'<p class="note">None of these listings match your card closely enough. Check the card number above, or edit the eBay search words.</p>'}
     ${rest.length?`<details style="margin-top:8px"><summary class="sub">${rest.length} other listing${rest.length===1?'':'s'} left out (different card, variant, number or item)</summary><table class="t" style="margin-top:6px">${head}${rest.map(row).join('')}</table></details>`:''}
     <p class="note">Only listings that match your card count in the math. Tap ☆ to pin a sale you want to show a vendor.</p>`;
@@ -895,6 +895,22 @@ function wantNumber(){
   else if((jpTwin||card.custom)&&lastRead.num){n=lastRead.num;t=/^\d+$/.test(lastRead.total||'')?lastRead.total:''}
   else if(!jpTwin&&!card.custom&&card.localId){n=card.localId;const off=card.set&&card.set.cardCount&&card.set.cardCount.official;t=/^\d+$/.test(card.localId)&&off?String(off):''}
   return n?{n:normNum(n),t:t?normNum(t):''}:null}
+// the year the card's set came out (TCGdex set page), kept on this phone so it's only fetched once per set
+const setYearMem=new Map();
+function setYear(){if(!card||card.custom||!card.set||!card.set.id)return null;const k=card.lang+':'+card.set.id;
+  if(setYearMem.has(k))return setYearMem.get(k);const all=ls.get('setyr',{});if(k in all){setYearMem.set(k,all[k]);return all[k]}
+  setYearMem.set(k,null);const want=key();
+  getJSON(API+card.lang+'/sets/'+encodeURIComponent(card.set.id)).then(s=>{const y=s&&s.releaseDate?+String(s.releaseDate).slice(0,4):null;
+    setYearMem.set(k,y);const a=ls.get('setyr',{});a[k]=y;ls.set('setyr',a);if(y&&key()===want){renderSources();renderMath()}}).catch(()=>setYearMem.delete(k));
+  return null}
+// years a listing for this card could plausibly say. Japanese prints usually come out before the English twin; promo sets run for years.
+function yearWindow(){const y=setYear();if(!y)return null;const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test(card.set.id||'');
+  return {lo:y-(jpTwin?2:0)-1,hi:y+(promo?4:1)}}
+// Japanese set codes in titles (S8a, SV2a, SM12a…) and the years each code family was printed
+const JA_ERA=[[/^SV/i,2023,2026],[/^SM/i,2016,2019],[/^S\d/i,2019,2023],[/^XY/i,2013,2016],[/^BW/i,2010,2013],[/^M\d/i,2025,2030]];
+function jaCodeYears(code){for(const[re,a,b]of JA_ERA)if(re.test(code))return[a,b];return null}
+// reprint sets that reuse old artwork and card numbers: only OK when your card is from that set
+const REPRINTS=[/25th anniversary|anniversary collection|\bs8a\b/,/\bcelebrations?\b/,/classic collection/,/mc ?donald'?s|happy meal/,/trick or trade/,/\bpokemon go\b/];
 function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?![\d.])/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
 function relevance(r,ctx){
   const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ')+' ';
@@ -909,6 +925,14 @@ function relevance(r,ctx){
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return -1;
   if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return -1;
   if(!ctx.first&&/\b1st\b|first edition/.test(t))return -1;
+  // wrong era: a year in the title far from when your card came out (e.g. "2021 … 25th Anniversary" for a 2008 card)
+  if(ctx.yr){const ys=[...t.matchAll(/(?<![\d$.])(199[6-9]|20[0-3]\d)(?![\d.])/g)].map(m=>+m[1]);if(ys.length&&!ys.some(y=>y>=ctx.yr.lo&&y<=ctx.yr.hi))return -1}
+  // reprint sets that reuse the same art and number
+  for(const re of REPRINTS)if(re.test(t)&&!re.test(ctx.setLc))return -1;
+  // a Japanese set code that doesn't fit: different code than your card's, or from a different era
+  const code=parseJaSet(r.title);
+  if(code){if(ctx.jaCode&&code.toLowerCase()!==ctx.jaCode.toLowerCase())return -1;
+    const era=jaCodeYears(code);if(!ctx.jaCode&&ctx.yr&&era&&(era[1]<ctx.yr.lo||era[0]>ctx.yr.hi))return -1}
   let score=1;const nums=titleNums(r.title);
   if(ctx.num){const hit=nums.some(x=>x.n===ctx.num.n&&(!ctx.num.t||!x.t||x.t===ctx.num.t));
     if(nums.length&&!hit)return -1; // different card number
@@ -930,15 +954,26 @@ function filterEbay(items){
   if(!SPECIES_LC)SPECIES_LC=SPECIES.map(x=>x.toLowerCase()).filter(x=>x.length>=4&&!/[^a-z]/.test(x));
   const setName=((live.tcg&&live.tcg.setName)||(!jpTwin&&card.set&&card.set.name)||'').toLowerCase();
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
-    num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w))};
-  const scored=items.map(r=>({r,s:relevance(r,ctx)}));
+    num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
+    yr:yearWindow(),setLc:setName,jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
+  let scored=items.map(r=>({r,s:relevance(r,ctx)}));
+  // number typed without the set total (e.g. "008"): work out the total from the listings that are left.
+  // Photo-matched listings decide first; otherwise the total most of the remaining number matches agree on.
+  let guessedTotal='';
+  if(ctx.num&&!ctx.num.t){const cnt={};
+    for(const x of scored){if(x.s<0)continue;const w=x.r.look!=null?(x.r.look>=.6?3:x.r.look<.45?0:1):1;
+      for(const k of titleNums(x.r.title))if(k.n===ctx.num.n&&k.t)cnt[k.t]=(cnt[k.t]||0)+w}
+    const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+    if(top.length&&top[0][1]>=2&&(top.length===1||top[0][1]>=top[1][1]*1.5)){guessedTotal=top[0][0];ctx.num={...ctx.num,t:guessedTotal};scored=items.map(r=>({r,s:relevance(r,ctx)}))}}
+  // once some listings show your exact number, drop the ones that name no number and no set (can't tell which card they are)
+  if(ctx.num&&scored.some(x=>x.s>=4))scored=scored.map(x=>x.s>=0&&x.s<1.5&&!titleNums(x.r.title).length&&!(x.r.look>=.6)?{...x,s:-1}:x);
   let ok=scored.filter(x=>x.s>=0).sort((a,b)=>(b.r.look??0)-(a.r.look??0)||b.s-a.s).map(x=>x.r);
   // photo check: listings whose picture doesn't look like the card you snapped are left out
   const looks=ok.map(r=>r.look).filter(v=>v!=null);
   if(looks.length){const best=Math.max(...looks);const cut=Math.min(.55,Math.max(.45,best-.25));ok=ok.filter(r=>r.look==null||r.look>=cut)}
   const tot=ok.map(r=>r.price+(r.ship||0));const med=median(tot);
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=r.price+(r.ship||0);return v>=med*.45&&v<=med*2.2});
-  return {list:ok,set:new Set(ok),num:ctx.num};
+  return {list:ok,set:new Set(ok),num:ctx.num,guessedTotal};
 }
 
 /* ---------- photo check of eBay listings against your snap ---------- */
