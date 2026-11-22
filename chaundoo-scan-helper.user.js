@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.2.0
+// @version      1.2.1
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -18,7 +18,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.2.0';
+  const VER = '1.2.1';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -65,7 +65,7 @@
   box.querySelector('[data-x]').onclick = () => box.remove();
 
   const isTcg = location.host === 'www.tcgplayer.com';
-  const isTcgSearch = isTcg && location.pathname.startsWith('/search/');
+  const onSearch = () => isTcg && location.pathname.startsWith('/search/');
   const source = isTcg ? 'tcg' : (/[?&]LH_Sold=1/.test(location.search) ? 'ebaySold' : 'ebayList');
 
   async function save(payload) {
@@ -154,17 +154,29 @@
     await save({ items });
   }
 
-  const run = () => (isTcgSearch ? Promise.resolve(status('Tap your card in the results. I\'ll read it on its page.')) : isTcg ? readTcg() : readEbay()).catch(e => status('Error: ' + e.message));
+  const run = () => (onSearch() ? Promise.resolve(status('Tap your card in the results. I\'ll read it on its page.')) : isTcg ? readTcg() : readEbay()).catch(e => status('Error: ' + e.message));
   box.querySelector('[data-go]').onclick = run;
 
   // Auto-read when this tab was opened from Card Scan in the last 15 minutes
-  (async () => {
+  let readFor = '';
+  async function autoRead() {
+    const here = location.pathname;
     const p = await get('pending_' + source, null);
+    const go = box.querySelector('[data-go]');
+    if (go) go.style.display = '';
     if (!p || Date.now() - p.at > PENDING_MAX) { status('Chaundoo Scan: tap to read'); return; }
-    if (isTcgSearch) { status('Tap your card in these results. I\'ll read it on its page' + (p.label ? ' (' + p.label + ')' : '') + '.'); box.querySelector('[data-go]').style.display = 'none'; return; }
-    if (isTcg && p.productId && !location.pathname.includes('/product/' + p.productId)) { status('Different product than Card Scan picked. Tap to read anyway.'); return; }
+    if (onSearch()) { status('Tap your card in these results. I\'ll read it on its page' + (p.label ? ' (' + p.label + ')' : '') + '.'); if (go) go.style.display = 'none'; return; }
+    if (isTcg && p.productId && !here.includes('/product/' + p.productId)) { status('Different product than Card Scan picked. Tap to read anyway.'); return; }
+    if (readFor === here) return; readFor = here;
     status('Linked to ' + (p.label || 'card') + '…');
     await sleep(isTcg ? 2500 : 800);
+    if (location.pathname !== here) return; // moved on while waiting
     run();
-  })();
+  }
+  autoRead();
+  // TCGplayer changes pages without reloading (tapping a search result), so watch the address
+  if (isTcg) {
+    let last = location.href;
+    setInterval(() => { if (location.href !== last) { last = location.href; if (location.pathname.includes('/product/') || onSearch()) autoRead(); } }, 600);
+  }
 })();
