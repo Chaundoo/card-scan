@@ -86,8 +86,14 @@ a{color:inherit}
 .preview{max-height:260px;border-radius:10px;display:block;margin:0 auto}
 .prog{height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:8px}
 .prog i{display:block;height:100%;width:0;background:var(--gold);transition:width .2s}
-.cam-modal{position:fixed;inset:0;z-index:100;background:#000}
-.cam-modal video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-modal{position:fixed;inset:0;z-index:100;background:#000;overflow:hidden;touch-action:none}
+.cam-modal video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:50% 44%;touch-action:none}
+.cam-zoom{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 108px);display:flex;flex-direction:column;align-items:center;gap:8px}
+.zbtns{display:flex;gap:8px;background:rgba(0,0,0,.45);padding:5px;border-radius:99px}
+.zbtns button{min-width:42px;height:34px;border-radius:99px;border:0;background:transparent;color:#fff;font-weight:700;font-size:13px}
+.zbtns button.on{background:rgba(255,255,255,.22);color:var(--gold)}
+.cam-zoom input{width:min(70vw,300px);accent-color:var(--gold)}
+.zlbl{color:#fff;font-weight:700;font-size:13px;text-shadow:0 1px 3px #000}
 .cam-guide{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(80vw,calc(64vh*63/88));aspect-ratio:63/88;border:3px solid var(--gold);border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
 .cam-name{position:absolute;left:0;right:0;top:0;height:13%;border-bottom:2px dashed rgba(255,255,255,.55)}
 .cam-num{position:absolute;left:0;right:0;bottom:0;height:13%;border-top:2px dashed rgba(240,189,42,.9);background:rgba(240,189,42,.12)}
@@ -299,7 +305,8 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
   <div id="cam-modal" class="cam-modal" hidden>
     <video id="cam-video" playsinline muted autoplay></video>
     <div class="cam-guide" id="cam-guide"><div class="cam-name"></div><div class="cam-num"></div></div>
-    <div class="cam-tip">Line the card up inside the box. Keep the bottom strip glare-free.</div>
+    <div class="cam-tip">Line the card up inside the box. Pinch or tap 2×/3× to zoom in from across the table.</div>
+    <div class="cam-zoom"><div class="zlbl" id="zlbl">1×</div><input type="range" id="zrange" min="1" max="6" step="0.1" value="1" aria-label="Zoom"><div class="zbtns" id="zbtns"></div></div>
     <div class="cam-bar"><button class="btn" id="cam-cancel">Cancel</button><button class="shutter" id="cam-shot" aria-label="Take picture"></button><button class="btn" id="cam-file">Photo</button></div>
   </div>
 </div>
@@ -426,13 +433,44 @@ async function readCardImage(src,isCropped){
 }
 /* ---------- camera with card guide ---------- */
 let stream=null,lastCard=null;
+/* zoom: the camera's own zoom where the phone allows it (most Androids), otherwise a sharp digital zoom from a high-res feed.
+   iPhones with a telephoto lens also get a "Tele" button that switches to that lens for real optical zoom. */
+let zoom=1,hwZoom=null,teleId=null,onTele=false;
+async function startStream(deviceId){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  const v={width:{ideal:3840},height:{ideal:2880}};if(deviceId)v.deviceId={exact:deviceId};else v.facingMode={ideal:'environment'};
+  try{stream=await navigator.mediaDevices.getUserMedia({video:v,audio:false})}
+  catch(e){stream=await navigator.mediaDevices.getUserMedia({video:deviceId?{deviceId:{exact:deviceId}}:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1440}},audio:false})}
+  const tr=stream.getVideoTracks()[0];const caps=tr.getCapabilities?tr.getCapabilities():{};
+  hwZoom=caps.zoom&&caps.zoom.max>1?caps.zoom:null;
+  const vid=$('#cam-video');vid.srcObject=stream;await vid.play().catch(()=>{});
+}
+async function findTele(){try{const ds=await navigator.mediaDevices.enumerateDevices();const t=ds.find(d=>d.kind==='videoinput'&&/tele/i.test(d.label));teleId=t?t.deviceId:null}catch{teleId=null}}
+function zoomMax(){return hwZoom?Math.min(hwZoom.max,10):6}
+function setZoom(z){z=Math.max(1,Math.min(zoomMax(),Math.round(z*10)/10));zoom=z;
+  const vid=$('#cam-video');
+  if(hwZoom){vid.style.transform='';const tr=stream&&stream.getVideoTracks()[0];if(tr)tr.applyConstraints({advanced:[{zoom:Math.max(hwZoom.min||1,z)}]}).catch(()=>{})}
+  else vid.style.transform=z>1?`scale(${z})`:'';
+  $('#zrange').max=zoomMax();$('#zrange').value=z;$('#zlbl').textContent=(onTele?'Tele · ':'')+(z%1?z.toFixed(1):z)+'×';
+  $$('#zbtns [data-z]').forEach(b=>b.classList.toggle('on',+b.dataset.z===z));ls.set('zoom',z)}
+function renderZoomBtns(){const m=zoomMax();const steps=[1,2,3,4,6].filter(x=>x<=m);
+  $('#zbtns').innerHTML=steps.map(x=>`<button data-z="${x}">${x}×</button>`).join('')+(teleId?`<button data-tele class="${onTele?'on':''}">Tele</button>`:'')}
+$('#zbtns').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.tele!=null){onTele=!onTele;await startStream(onTele?teleId:null);renderZoomBtns();setZoom(1);return}
+  setZoom(+b.dataset.z)});
+$('#zrange').addEventListener('input',e=>setZoom(+e.target.value));
+// pinch to zoom on the camera view
+(()=>{let d0=0,z0=1;const m=$('#cam-modal');const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  m.addEventListener('touchstart',e=>{if(e.touches.length===2){d0=dist(e.touches);z0=zoom}},{passive:true});
+  m.addEventListener('touchmove',e=>{if(e.touches.length===2&&d0){e.preventDefault();setZoom(z0*dist(e.touches)/d0)}},{passive:false});
+  m.addEventListener('touchend',e=>{if(e.touches.length<2)d0=0},{passive:true});})();
 async function openCamera(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('#cam').click();return}
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1440}},audio:false})}
-  catch(e){$('#cam').click();return}
-  const v=$('#cam-video');v.srcObject=stream;$('#cam-modal').hidden=false;document.body.style.overflow='hidden';await v.play().catch(()=>{});
+  onTele=false;try{await startStream(null)}catch(e){$('#cam').click();return}
+  $('#cam-modal').hidden=false;document.body.style.overflow='hidden';
+  await findTele();renderZoomBtns();setZoom(ls.get('zoom',1));
 }
-function closeCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('#cam-modal').hidden=true;document.body.style.overflow=''}
+function closeCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('#cam-video').style.transform='';$('#cam-modal').hidden=true;document.body.style.overflow=''}
 function grabGuide(){
   const v=$('#cam-video'),vr=v.getBoundingClientRect(),gr=$('#cam-guide').getBoundingClientRect();
   const vw=v.videoWidth,vh=v.videoHeight,sc=Math.max(vr.width/vw,vr.height/vh);
@@ -440,7 +478,8 @@ function grabGuide(){
   const pad=.03*gr.width;// small margin so card edges aren't cut
   let sx=(gr.left-pad-ox)/sc,sy=(gr.top-pad-oy)/sc,sw=(gr.width+2*pad)/sc,sh=(gr.height+2*pad)/sc;
   sx=Math.max(0,sx);sy=Math.max(0,sy);sw=Math.min(vw-sx,sw);sh=Math.min(vh-sy,sh);
-  const c=document.createElement('canvas');c.width=Math.round(sw);c.height=Math.round(sh);c.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);return c;
+  const up=sw<500?500/sw:1; // very zoomed: upscale smoothly so the matcher and number reader get enough pixels
+  const c=document.createElement('canvas');c.width=Math.round(sw*up);c.height=Math.round(sh*up);const g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);return c;
 }
 $('#snap-btn').addEventListener('click',openCamera);
 $('#cam-cancel').addEventListener('click',closeCamera);
