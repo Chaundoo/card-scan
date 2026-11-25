@@ -1250,6 +1250,13 @@ const LANG_NAME={japan:'Japanese',jpn:'Japanese',jp:'Japanese',japanese:'Japanes
 let WHY='';const NO=w=>{WHY=w;return -1};
 const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag|ace grading|ace \d+|graded|slab|gem mint)\b/i;
 const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
+// set and subset names that contain a version word but are not a version of the card
+const SET_PHRASES=['radiant collection','trainer gallery','galarian gallery','shiny vault','black star','wizards black star','lost origin','shining legends','shining fates','crystal guardians','legendary treasures','legendary collection','hidden legends','legends awakened','star birth','dark explorers','team rocket','dragon frontiers','delta species','legend maker','mega evolution','mega evolutions','pokemon prime','ex series','ex era','darkness ablaze'];
+function setPhraseRes(setName,num){const out=SET_PHRASES.slice();const sn=String(setName||'').toLowerCase().replace(/[-–:&]/g,' ').replace(/\s+/g,' ').trim();
+  if(sn)out.push(sn,sn.replace(/^(pokemon|pokémon)\s+/,''));
+  const pre=String(num||'').toLowerCase().match(/^[a-z]+/);const SUB={rc:'radiant',tg:'trainer gallery',gg:'galarian gallery',sv:'shiny vault',sh:'shining',sl:'shining legends'};
+  if(pre&&SUB[pre[0]])out.push(SUB[pre[0]]);
+  return out.filter(Boolean).map(x=>new RegExp('(^|[^a-z0-9])'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/ /g,'\\s+')+'(?![a-z0-9])','g'))}
 const VARIANT=['v','vmax','vstar','v-union','gx','ex','lv.x','lvx','break','prime','legend','radiant','shining','origin','forme','mega','dark','light','crystal','star','δ','delta','tera','ace spec'];
 // the card number the comps must match: typed box > TCGplayer page the helper read > scan > catalog
 function wantNumber(){
@@ -1288,7 +1295,9 @@ function relevance(r,ctx){
   if(ctx.lang==='ja'&&/\benglish\b/.test(t))return NO('English card');
   const saysJp=/\b(japanese|japan|jpn)\b|日本/.test(t);
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
-  for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(t))return NO('different version ('+v.toUpperCase()+')');
+  // version words only count outside set/subset names ("Radiant Collection", "Lost Origin", "Black Star Promo", your card's own set…)
+  let tv=t;for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
+  for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(tv))return NO('different version ('+v.toUpperCase()+')');
   if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return NO('reverse holo');
   if(!ctx.first&&/\b1st\b|first edition/.test(t))return NO('1st edition');
   // wrong era: a year in the title far from when your card came out (e.g. "2021 … 25th Anniversary" for a 2008 card)
@@ -1325,7 +1334,7 @@ function filterEbay(items){
   const setName=((live.tcg&&live.tcg.setName)||(!jpTwin&&card.set&&card.set.name)||'').toLowerCase();
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
-    yr:yearWindow(),setLc:setName,jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
+    yr:yearWindow(),setLc:setName,setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
   const rel=r=>{WHY='';const s=relevance(r,ctx);return {r,s,why:WHY}};
   let scored=items.map(rel);
   // number typed without the set total (e.g. "008"): work out the total from the listings that are left.
