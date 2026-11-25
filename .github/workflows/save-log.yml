@@ -1,0 +1,59 @@
+name: Save profit log
+
+# Runs when you open an issue titled "Save data: ..." — Card Scan's "Save to GitHub" button fills it in.
+# Card shows arrive already locked with your passcode; this job only checks their shape and stores them.
+# Issues from anyone but you (or collaborators) are ignored.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: save-log
+  cancel-in-progress: false
+
+jobs:
+  save:
+    if: startsWith(github.event.issue.title, 'Save data') && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Save the changes
+        id: save
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for try in 1 2 3; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            python3 scripts/save_log.py
+            status=$(grep -o 'status=.*' "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2)
+            [ "$status" = "saved" ] || break
+            git add profitlog.json
+            git diff --cached --quiet && break
+            git commit -q -m "Save profit log (#${{ github.event.issue.number }})"
+            if git push -q; then break; fi
+            echo "Push raced with another update; retrying ($try)"
+            [ "$try" = "3" ] && printf '\n\n⚠️ Could not save after 3 tries. Tap Save to GitHub in Card Scan again.\n' >> run_report.md
+            sleep $((try * 10))
+          done
+
+      - name: Reply on the issue and close it
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          [ -f run_report.md ] || echo "❌ The save script crashed. Open the Actions run for details." > run_report.md
+          echo "" >> run_report.md
+          echo "[Run details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> run_report.md
+          gh issue comment "$NUM" --body-file run_report.md
+          if [ "${{ steps.save.outputs.status }}" = "saved" ]; then
+            gh issue close "$NUM" --reason completed
+          else
+            gh issue close "$NUM" --reason "not planned"
+          fi
