@@ -1132,7 +1132,7 @@ let JA_NAMES=null;async function jaToEn(n){try{if(!JA_NAMES)JA_NAMES=await getJS
   for(let guard=0;guard<4&&rest;guard++){const k=keys.find(k=>rest.startsWith(k));if(!k)break;out.push(JA_NAMES[k]);rest=rest.slice(k.length).replace(/^[&＆]/,'')}
   if(!out.length)return '';const suf=(rest.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];return out.join(' & ')+(suf?' '+suf:'')}
 const JA_NONUM=/^(PMCG\d|neo\d|VS1|web1)$/i;
-const JA_OLD={PMCG1:'base',PMCG2:'jungle',PMCG3:'fossil',PMCG4:'rocket',PMCG5:'gym',PMCG6:'gym',neo1:'neo',neo2:'neo',neo3:'neo',neo4:'neo',VS1:'vs',web1:'web'};
+const JA_OLD={PMCG1:'base',PMCG2:'jungle',PMCG3:'fossil',PMCG4:'rocket',PMCG5:'gym',PMCG6:'gym',neo1:'genesis',neo2:'discovery',neo3:'revelation',neo4:'destiny',VS1:'vs',web1:'web'};
 const jaNoNum=()=>!!(card&&!card.custom&&!jpTwin&&card.lang==='ja'&&card.set&&JA_NONUM.test(card.set.id||''));
 function ebayQuery(){
   const typedNum=($('#c-num')&&$('#c-num').value.trim())||'';
@@ -1148,8 +1148,11 @@ function ebayQuery(){
   if(promo){
     // promos only print the number (085, SWSH050, SM60), never a set total; sellers write it several ways
     const d=card.localId.replace(/^[A-Z-]+/i,'');const PRE={svp:'SVP',smp:'SM',bwp:'BW',xyp:'XY',hgssp:'HGSS',dpp:'DP',mep:'MEP'}[(card.set&&card.set.id||'').toLowerCase()];
-    const alts=[...new Set([card.localId,PRE&&d?PRE+d:'',d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
-    parts.push('('+alts.join(',')+',promo)');
+    // promos with a code (BW74, SWSH050, SVP 085): search the code itself, so cheap other promos don't crowd it out;
+    // Wizards promos (plain numbers) still need the word promo
+    const coded=/[A-Z]/i.test(card.localId)||PRE;
+    const alts=coded?[...new Set([/[A-Z]/i.test(card.localId)?card.localId:'',PRE&&d?PRE+d:'',PRE==='SVP'?d:''].filter(Boolean))]:[...new Set([card.localId,d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
+    parts.push(alts.length>1||!coded?'('+alts.join(',')+(coded?'':',promo')+')':alts[0]);
   }else{const lz=card.localId.match(/^([A-Z]+)0+(\d+)$/i); // H09 is printed H9: search either way
     parts.push(lz?'('+card.localId+','+lz[1]+lz[2]+')':card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''))}
   if(card.lang==='ja')parts.push('japanese');
@@ -1332,7 +1335,7 @@ const OTHER_LANG=/(?:^|[^a-z])(japanese|japan|jpn|jp|korean|kor|chinese|chn|thai
 const LANG_NAME={japan:'Japanese',jpn:'Japanese',jp:'Japanese',japanese:'Japanese',korean:'Korean',kor:'Korean',chinese:'Chinese',chn:'Chinese',thai:'Thai',indonesian:'Indonesian',german:'German',deutsch:'German',deutsche:'German',ger:'German',deu:'German',italian:'Italian',italiano:'Italian',italiana:'Italian',ita:'Italian',french:'French','français':'French','francais':'French',francaise:'French',fr:'French',fra:'French',spanish:'Spanish','español':'Spanish',espanol:'Spanish',espanola:'Spanish',spa:'Spanish',esp:'Spanish',portuguese:'Portuguese','português':'Portuguese',portugues:'Portuguese',por:'Portuguese',dutch:'Dutch',nederlands:'Dutch',polish:'Polish',polski:'Polish',russian:'Russian'};
 let WHY='';const NO=w=>{WHY=w;return -1};
 const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag|ace grading|ace \d+|graded|slab|gem mint)\b/i;
-const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coin|pin|figure|plush|jumbo|oversize|complete set|set of)\b/i;
+const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coins?|token|pin|figure|plush|jumbo|oversize|complete set|set of|fan ?art|fan made|fan promo|novelty|sticker|stickers|decal|magnet|key ?chain|case|display|insert|inserts|skin|poster|art print|acrylic|(gold|silver|black|rainbow) foil|choose your card|pick your card|you pick|pick your|choose your|complete your set|singles|master set|dealer)\b/i;
 // set and subset names that contain a version word but are not a version of the card
 const SET_PHRASES=['radiant collection','trainer gallery','galarian gallery','shiny vault','black star','wizards black star','lost origin','shining legends','shining fates','crystal guardians','legendary treasures','legendary collection','hidden legends','legends awakened','star birth','dark explorers','team rocket','dragon frontiers','delta species','legend maker','mega evolution','mega evolutions','pokemon prime','ex series','ex era','darkness ablaze'];
 function setPhraseRes(setName,num){const out=SET_PHRASES.slice();const sn=String(setName||'').toLowerCase().replace(/[-–:&]/g,' ').replace(/\s+/g,' ').trim();
@@ -1381,8 +1384,16 @@ function relevance(r,ctx){
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
   // version words only count outside set/subset names ("Radiant Collection", "Lost Origin", "Black Star Promo", your card's own set…)
   let tv=t;for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
+  if(ctx.exEra)tv=tv.replace(/(^|[^a-z0-9])ex (ruby|sapphire|sandstorm|dragon|team|hidden|fire ?red|leaf ?green|deoxys|emerald|unseen|delta|legend|holon|crystal|power|series|era)(?![a-z])/g,' ');
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(tv))return NO('different version ('+v.toUpperCase()+')');
   if(ctx.print.type!=='reverse'&&/\b(reverse|rev holo)\b/.test(t))return NO('reverse holo');
+  if(ctx.print.type==='holo'&&/\bnon[ -]?holo\b/.test(t))return NO('non-holo version');
+  // promo numbers (SWSH050, BW74, SVP 085…) aren't written like 4/102, so check them here
+  const promos=[...t.matchAll(/(?:^|[^a-z0-9])(swsh|svp|sm|xy|bw|hgss|dp|mep)\s?-?0*(\d{1,3})(?![0-9])/g)].map(m=>m[1]+(+m[2]));
+  if(ctx.promo&&promos.length&&!promos.includes(ctx.promo))return NO('different promo number');
+  if(ctx.promo&&!promos.length&&/\b(swsh|svp|sm|xy|bw)\s?\d/.test(t))return NO('different promo number');
+  // 1996–2001 Japanese cards have no printed number, so a number in the title means another card
+  if(ctx.jaOld&&titleNums(r.title).length)return NO('has a card number (this Japanese card has none)');
   // stamped copies: for a reverse holo, "stamp"/"stamped" means the same card (e.g. "Kyogre Emerald Stamp");
   // for a regular print with no stamp of its own, a stamped copy is a different print (prerelease, staff, set stamp…)
   const stampy=/\b(stamp|stamped|prerelease|pre release|staff)\b/.test(t)&&!/\bno stamp\b/.test(t);
@@ -1422,6 +1433,8 @@ function filterEbay(items){
   const setName=((live.tcg&&live.tcg.setName)||(!jpTwin&&card.set&&card.set.name)||'').toLowerCase();
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
+    exEra:/^ex\d/i.test((card.set&&card.set.id)||''),jaOld:jaNoNum(),
+    promo:(()=>{const pre={svp:'svp',smp:'sm',bwp:'bw',xyp:'xy',hgssp:'hgss',dpp:'dp',swshp:'swsh',mep:'mep'}[((card.set&&card.set.id)||'').toLowerCase()];const d=(card.localId||'').replace(/^[A-Z-]+/i,'');return pre&&/^\d+$/.test(d)?pre+(+d):''})(),
     yr:yearWindow(),setLc:setName,setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
   const rel=r=>{WHY='';const s=relevance(r,ctx);return {r,s,why:WHY}};
   let scored=items.map(rel);
