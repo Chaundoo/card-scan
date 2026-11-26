@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.3.1
+// @version      1.4.0
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -18,7 +18,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.3.1';
+  const VER = '1.4.0';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -81,8 +81,7 @@
 
   /* ---------- TCGplayer reader ---------- */
   async function waitFor(sel, ms) { const t = Date.now(); while (Date.now() - t < ms) { const el = document.querySelector(sel); if (el) return el; await sleep(250); } return null; }
-  async function readTcg() {
-    status('Reading TCGplayer…');
+  async function readTcgPage() {
     await waitFor('.price-guide__points', 15000);
     await waitFor('.listing-item', 8000);
     await waitFor('.price-guide__latest-sales .modal__activator', 6000);
@@ -101,6 +100,14 @@
       const btn = document.querySelector('.price-guide__latest-sales .modal__activator') || [...document.querySelectorAll('button, .modal__activator, a')].find(b => /View More Data/i.test(b.textContent || ''));
       if (btn) { btn.click(); rowsEl = await waitFor('.latest-sales-table__tbody tr', 8000); }
     }
+    // signed in, the sales window can show more: press "Load more" a few times
+    for (let i = 0; i < 6; i++) {
+      const n0 = document.querySelectorAll('.latest-sales-table__tbody tr').length;
+      const more = [...document.querySelectorAll('button, a')].find(b => /load more/i.test(b.textContent || '') && b.offsetParent);
+      if (!more) break; more.click();
+      const t0 = Date.now(); while (Date.now() - t0 < 4000 && document.querySelectorAll('.latest-sales-table__tbody tr').length === n0) await sleep(250);
+      if (document.querySelectorAll('.latest-sales-table__tbody tr').length === n0) break;
+    }
     for (const tr of document.querySelectorAll('.latest-sales-table__tbody tr')) {
       const c = tr.querySelector('.latest-sales-table__tbody__condition');
       const condLine = txt(c && c.querySelector('div')) || txt(c);
@@ -118,8 +125,46 @@
       });
     }
     out.listings = out.listings.filter(l => l.price);
-    if (!out.sales.length && !out.listings.length && out.market == null) { status('Couldn\'t find prices yet. Wait for the page to load, then tap Read this page.'); return; }
-    await save(out);
+    return out;
+  }
+
+  // TCGplayer only shows a short list of the latest sales for all conditions together. Filtering the page to one condition
+  // (Condition=Lightly+Played in the address) shows that condition's own, longer history. So a full read visits each condition in turn.
+  const CONDS = [['NM', 'Near Mint'], ['LP', 'Lightly Played'], ['MP', 'Moderately Played'], ['HP', 'Heavily Played'], ['DMG', 'Damaged']];
+  const condOf = v => (CONDS.find(c => c[1].toLowerCase() === String(v || '').toLowerCase()) || [null])[0];
+  const pidHere = () => (location.pathname.match(/\/product\/(\d+)/) || [])[1] || '';
+  function condUrl(name) { const u = new URL(location.href); if (name) u.searchParams.set('Condition', name); else u.searchParams.delete('Condition'); return u.toString(); }
+  async function readTcg() {
+    const pid = pidHere(); const here = new URL(location.href).searchParams.get('Condition');
+    let sw = await get('sweep', null);
+    if (sw && (sw.pid !== pid || Date.now() - sw.at > 6 * 60 * 1000)) { sw = null; await set('sweep', null); }
+    // part of a full read: add this condition, then go to the next one
+    if (sw && here && condOf(here) === CONDS[sw.i][0]) {
+      status('Reading all conditions: ' + CONDS[sw.i][0] + ' (' + (sw.i + 1) + '/' + CONDS.length + ')…');
+      const out = await readTcgPage();
+      sw.sales.push(...out.sales); sw.listings.push(...out.listings); sw.done.push(CONDS[sw.i][0]); sw.i++; sw.at = Date.now();
+      if (sw.i < CONDS.length) { await set('sweep', sw); location.replace(condUrl(CONDS[sw.i][1])); return; }
+      await set('sweep', null);
+      const ok = await save({ ...sw.base, sales: sw.sales, listings: sw.listings, conds: sw.done });
+      if (ok) status('Read all 5 conditions (' + sw.sales.length + ' sales) ✓ Sent to Card Scan');
+      return;
+    }
+    // you filtered the page to one condition yourself: send just that condition (Card Scan keeps the others)
+    if (here && condOf(here)) {
+      status('Reading ' + here + ' only…');
+      const out = await readTcgPage();
+      if (!out.sales.length && !out.listings.length && out.market == null) { status('Couldn\'t find prices yet. Wait for the page to load, then tap Read this page.'); return; }
+      await save({ ...out, conds: [condOf(here)] });
+      return;
+    }
+    // the normal page: read it, then visit each condition
+    status('Reading TCGplayer…');
+    const base = await readTcgPage();
+    if (!base.sales.length && !base.listings.length && base.market == null) { status('Couldn\'t find prices yet. Wait for the page to load, then tap Read this page.'); return; }
+    const { sales, listings, ...info } = base;
+    await set('sweep', { pid, i: 0, at: Date.now(), base: info, sales: [], listings: [], done: [] });
+    status('Now reading each condition (NM, LP, MP, HP, DMG)…');
+    location.replace(condUrl(CONDS[0][1]));
   }
 
   /* ---------- eBay reader ---------- */
@@ -190,6 +235,7 @@
       status('Tap your card in these results. I\'ll read it on its page' + (p.label ? ' (' + p.label + ')' : '') + '.'); return;
     }
     if (isTcg && p.productId && !here.includes('/product/' + p.productId)) { status('Different product than Card Scan picked. Tap to read anyway.'); return; }
+    if (isTcg) { const sw = await get('sweep', null); if (sw && sw.pid === pidHere()) { if (go) go.style.display = 'none'; await sleep(1500); run(); return; } }
     if (readFor === here) return; readFor = here;
     status('Linked to ' + (p.label || 'card') + '…');
     await sleep(isTcg ? 2500 : 800);

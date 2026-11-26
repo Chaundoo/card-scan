@@ -609,13 +609,13 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.4.0">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.4.0">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.4.0">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -1218,7 +1218,7 @@ $('#c-sticker').addEventListener('input',renderMath);
 
 /* ---------- live sources ---------- */
 const SRC={
-  tcg:{title:'TCGplayer',btn:'Read TCGplayer',hint:'Reads TCGplayer\'s latest sales and the listings on the page, then splits them by condition (NM, LP, MP, HP, DMG) for your printing. Sign in to TCGplayer in that browser to see more than 5 sales.'},
+  tcg:{title:'TCGplayer',btn:'Read TCGplayer',hint:'The helper reads the card\'s page, then filters it to each condition in turn (NM, LP, MP, HP, DMG) and reads each one\'s own sales history and cheapest listings. Takes about 30–45 seconds; leave the TCGplayer tab open until it says ✓. Sign in to TCGplayer in that browser to see more than 5 sales per condition.'},
   ebaySold:{title:'eBay sold',btn:'Read eBay last sold',hint:'Raw copies that actually sold on eBay. Graded, lots and other versions are left out. Condition isn\'t used here, because eBay sellers\' condition labels are often wrong.'},
   ebayList:{title:'eBay listings',btn:'Read eBay listings',hint:'Cheapest Buy It Now listings right now: the ceiling a buyer would pay.'}
 };
@@ -1260,8 +1260,25 @@ function readSource(s,url){
   else if(!sessionStorage.getItem('ccs.nohelper')){sessionStorage.setItem('ccs.nohelper','1');setTimeout(()=>alert('Helper not installed, so the page will just open. Copy the page and use Paste, or set up the helper on the Helper tab.'),50)}
   window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
+// TCGplayer reads add up instead of wiping: a read of one condition (or all five) replaces only those conditions,
+// everything else you read before stays. Repeats across reads count once; two real identical sales in one read stay two.
+function mergeRows(oldRows,newRows,keyOf){const cnt=new Map();for(const r of newRows){const k=keyOf(r);cnt.set(k,(cnt.get(k)||0)+1)}
+  const out=[...newRows];const seen=new Map();for(const r of oldRows){const k=keyOf(r);const n=(seen.get(k)||0)+1;seen.set(k,n);if(n>(cnt.get(k)||0))out.push(r)}return out}
+const saleKey=r=>[r.date,(r.cond||'').toLowerCase(),r.price,r.qty||1,(r.note||'').toLowerCase()].join('|');
+const listKey=r=>[(r.cond||'').toLowerCase(),r.price,r.ship||0,(r.seller||'').toLowerCase()].join('|');
+const saleTime=d=>{const m=String(d||'').match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);if(!m)return 0;const y=+m[3]<100?2000+ +m[3]:+m[3];return Date.UTC(y,m[1]-1,+m[2])};
+function mergeTcg(old,neu){
+  if(!old||!old.sales)return {...neu,byCond:Object.fromEntries((neu.conds||[]).map(c=>[c,neu.at]))};
+  const cc=r=>r.cc||condCode(r.cond);const conds=neu.conds&&neu.conds.length?neu.conds:null;
+  const keepOld=r=>!conds||!conds.includes(cc(r));
+  const sales=mergeRows(old.sales.filter(keepOld),neu.sales||[],saleKey).sort((a,b)=>saleTime(b.date)-saleTime(a.date));
+  const listings=conds?[...(neu.listings||[]),...(old.listings||[]).filter(keepOld)]:mergeRows(old.listings||[],neu.listings||[],listKey);
+  const byCond={...(old.byCond||{})};(conds||[]).forEach(c=>byCond[c]=neu.at);
+  return {...old,...neu,sales,listings:listings.slice(0,120),byCond};
+}
 function gotLive(k,s,payload){
   const cur=liveStore.get(k)||liveLoad(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
+  if(s==='tcg')payload=mergeTcg(cur[s],payload);
   cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);
   if(s==='tcg'&&k===key()&&card&&card.lang==='ja'&&/[^\x00-\x7f]/.test(enName||card.name)&&payload.title){const t=payload.title.split(' - ')[0].replace(/\s*\([^)]*\)\s*$/,'').trim();if(t&&!/[^\x00-\x7f]/.test(t)){enName=t;$('#c-q').value=ebayQuery();renderLinks()}}
   if(s==='tcg'&&k===key()&&card&&(jpTwin||card.custom)&&payload.number&&!$('#c-num').value.trim()){$('#c-num').value=payload.number;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=payload.number;ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks()}if(k===key()){live=cur;srcTab=s;renderSource(s);renderTabs();renderMath()}
@@ -1295,13 +1312,16 @@ function tcgTable(d){
   const C=['NM','LP','MP','HP','DMG'];
   h+=`<table class="t ctable"><tr><th>Condition</th><th class="r">Sales</th><th class="r">Median sold</th><th class="r">Last sold</th><th class="r">Cheapest seen</th></tr>${C.map(c=>{
     const rs=rows.filter(r=>r.cc===c),ls_=lst.filter(r=>r.cc===c);const md=median(rs.map(r=>r.price));const lo=ls_.length?Math.min(...ls_.map(r=>r.price+(r.ship||0))):null;
-    return `<tr data-cc="${c}" class="${c===cond?'sel':''}"><td class="c"><b>${c}</b></td><td class="r">${rs.length||'—'}</td><td class="r"><b>${md!=null?money(md):'—'}</b></td><td class="r">${rs.length?money(rs[0].price)+`<div class="sub">${esc(rs[0].date)}</div>`:'—'}</td><td class="r">${lo!=null?money(lo):'—'}</td></tr>`}).join('')}</table>
+    const fr=d.byCond&&d.byCond[c];
+    return `<tr data-cc="${c}" class="${c===cond?'sel':''}"><td class="c"><b>${c}</b>${fr?`<div class="sub">read ${esc(timeAgo(fr))}</div>`:''}</td><td class="r">${rs.length||'—'}</td><td class="r"><b>${md!=null?money(md):'—'}</b></td><td class="r">${rs.length?money(rs[0].price)+`<div class="sub">${esc(rs[0].date)}</div>`:'—'}</td><td class="r">${lo!=null?money(lo):'—'}</td></tr>`}).join('')}</table>
+    <p class="note">Each read adds to this table: a full read fills all five conditions, and reading a TCGplayer page you filtered to one condition updates just that one. Duplicate sales are only counted once. <button class="lnk" id="tcg-clear">Start fresh</button></p>
     <p class="note">Tap a condition to use it in the math. ${esc((prints[pIdx]||{}).label||'')} only${other>0?` (${other} sale${other===1?'':'s'} of other printings left out)`:''}${graded?`; ${graded} graded cop${graded===1?'y':'ies'} sold as raw left out`:''}. TCGplayer only shows its 10 cheapest listings, so “Cheapest seen” mostly fills in for played copies.</p>`;
   if(rows.length)h+=`<details style="margin-top:8px"><summary>All ${rows.length} sales</summary><table class="t" style="margin-top:6px"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th><th></th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}${r.out?`<div class="why">⚡ far from the other ${esc(r.cc)} sales — worth showing a vendor</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td><td>${pinBtn('tcg',{title:'TCGplayer '+r.cond+(r.note?' – '+r.note:''),price:r.price,date:r.date,cond:r.cond,url:(live.tcg&&live.tcg.url)||''})}</td></tr>`).join('')}</table></details>`;
   else h+='<p class="note">No sales for this printing came through. Tap Read again once the TCGplayer page has fully loaded, or check the printing above.</p>';
   if(lst.length)h+=`<details style="margin-top:8px"><summary>${lst.length} listings on the page</summary><table class="t" style="margin-top:6px"><tr><th>Cond</th><th>Seller</th><th class="r">Price + ship</th></tr>${lst.slice().sort((a,b)=>(a.price+(a.ship||0))-(b.price+(b.ship||0))).map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.cond)}</td><td class="sub">${esc(r.seller||'')}</td><td class="r"><b>${money(r.price+(r.ship||0))}</b></td></tr>`).join('')}</table></details>`;
   return h;
 }
+document.addEventListener('click',e=>{if(e.target.id==='tcg-clear'&&card){const k=key();const cur=liveStore.get(k)||liveLoad(k)||{};delete cur.tcg;liveStore.set(k,cur);liveSave(k,cur);live=cur;renderSources();renderMath();return}});
 document.addEventListener('click',e=>{const tr=e.target.closest('.ctable tr[data-cc]');if(!tr||!card)return;cond=tr.dataset.cc;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x.dataset.c===cond));renderSources();renderMath()});
 function ebayTable(d,s){
   const items=d.items||[];if(!items.length)return'<p class="note">No listings came through.</p>';
@@ -1705,7 +1725,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.1'?' <b>An update (v1.3.1) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.1&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.4.0'?' <b>An update (v1.4.0) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.4.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});
