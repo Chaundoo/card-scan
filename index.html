@@ -651,13 +651,13 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.5.0">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.5.0">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.5.0">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -1414,9 +1414,15 @@ function swOpen(){const d=live.ebaySold;if(!d||!d.items)return;SW.list=filterEba
 // clear display: hides the title, price and buttons so the whole card shows; tap the photo or the side button to switch
 function swSetClear(on){SW.clear=on;ls.set('swClear',on);$('#sw').classList.toggle('clear',on);$('#sw-clear').textContent=on?'☰':'⤢';$('#sw-clear-l').textContent=on?'Show info':'Clear';$('#sw-clear').setAttribute('aria-label',on?'Show info':'Clear display')}
 function swClose(){$('#sw').hidden=true;document.documentElement.style.overflow='';if(SW.obs)SW.obs.disconnect()}
+// photos: the search thumbnail (already loaded, so instant) shows first, the sharp version swaps in when it arrives.
+// Images come from eBay's picture server, not its pages, so preloading them doesn't trigger human checks.
 function swImgs(r){const got=SW.photos.get(r.url);if(got&&got.length)return got;return r.img?[hiImg(r.img)]:[]}
+const swHiLoaded=new Set();
+function swHi(img){const hi=img&&img.dataset.hi;if(!hi||img.dataset.done)return;img.dataset.done='1';
+  if(swHiLoaded.has(hi)){img.src=hi;return}const t=new Image();t.decoding='async';t.onload=()=>{swHiLoaded.add(hi);img.src=hi};t.src=hi}
+function swImgTag(u,j,lo){return `<img alt="Photo ${j+1}" decoding="async" data-hi="${esc(u)}"${lo?` src="${esc(lo)}"`:''}>`}
 function swSlide(r,i){const imgs=swImgs(r);const f=filterEbay(live.ebaySold.items);const out=!f.set.has(r);const id=ovId(r);
-  return `<div class="sw-slide" data-i="${i}"><div class="sw-strip">${imgs.length?imgs.map((u,j)=>`<img data-src="${esc(u)}" alt="Photo ${j+1}"${j===0&&Math.abs(i-SW.cur)<=1?` src="${esc(u)}"`:''}>`).join(''):'<div style="margin:auto;opacity:.6">No photo</div>'}</div>
+  return `<div class="sw-slide" data-i="${i}"><div class="sw-strip">${imgs.length?imgs.map((u,j)=>swImgTag(u,j,j===0?(swHiLoaded.has(u)?u:r.img||''):'')).join(''):'<div style="margin:auto;opacity:.6">No photo</div>'}</div>
    <div class="sw-dots">${imgs.length>1?imgs.map((_,j)=>`<i class="${j?'':'on'}"></i>`).join(''):''}</div>
    <div class="sw-msg" data-msg></div>
    ${imgs.length>1?'<button class="sw-nav l" data-nav="-1" aria-label="Previous photo">‹</button><button class="sw-nav r" data-nav="1" aria-label="Next photo">›</button>':''}
@@ -1424,34 +1430,44 @@ function swSlide(r,i){const imgs=swImgs(r);const f=filterEbay(live.ebaySold.item
     <div><span class="pr">${money(swTot(r))}</span>${r.ship?`<span class="meta"> (${money(r.price)} + ${money(r.ship)} ship)</span>`:''}${r.bo?'<span class="sw-tag">Best offer: sold for less</span>':''}${out?'<span class="sw-tag out">Not counted</span>':''}</div>
     <div class="meta">${r.date?'Sold '+esc(shortDate(r.date)):''}${r.auction?' · auction':''} · ${i+1} of ${SW.list.length}</div>
     <div class="acts">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">Open on eBay</a>`:''}<button data-swov="${esc(id)}" data-v="${out?'':'out'}">${out?'Undo: count it':"Don't count"}</button>${pinBtn('ebaySold',r)}</div></div></div>`}
+function swWire(el){const st=el.querySelector('.sw-strip');if(!st||st.dataset.w)return;st.dataset.w='1';
+  st.addEventListener('scroll',()=>{const k=Math.round(st.scrollLeft/st.clientWidth);el.querySelectorAll('.sw-dots i').forEach((d,j)=>d.classList.toggle('on',j===k));
+    for(const c of [st.children[k],st.children[k+1],st.children[k+2]])if(c&&c.tagName==='IMG'){if(!c.src)c.src=c.dataset.hi;swHi(c)}},{passive:true})}
 function swRender(at){const L=swSorted();SW.sorted=L;SW.cur=at||0;
   $$('#sw-sort button').forEach(b=>b.classList.toggle('on',b.dataset.o===SW.order));
   const feed=$('#sw-feed');feed.innerHTML=L.map(swSlide).join('')+(L.length?'':'<p style="padding:30px;text-align:center">No counted sales.</p>');
   feed.scrollTop=SW.cur*feed.clientHeight;swCount();
   if(SW.obs)SW.obs.disconnect();
-  SW.obs=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting&&e.intersectionRatio>.6){SW.cur=+e.target.dataset.i;swCount();swPrep(SW.cur);swPrep(SW.cur+1);swPrep(SW.cur+2,true)}},{root:feed,threshold:[.6]});
-  feed.querySelectorAll('.sw-slide').forEach(el=>{SW.obs.observe(el);const st=el.querySelector('.sw-strip');
-    st.addEventListener('scroll',()=>{const k=Math.round(st.scrollLeft/st.clientWidth);el.querySelectorAll('.sw-dots i').forEach((d,j)=>d.classList.toggle('on',j===k));const im=st.children[k];if(im&&im.dataset.src&&!im.src)im.src=im.dataset.src;const nx=st.children[k+1];if(nx&&nx.dataset&&nx.dataset.src&&!nx.src)nx.src=nx.dataset.src},{passive:true})});
-  swPrep(SW.cur);swPrep(SW.cur+1)}
+  SW.obs=new IntersectionObserver(es=>{for(const e of es)if(e.isIntersecting&&e.intersectionRatio>.6){SW.cur=+e.target.dataset.i;swCount();swAhead()}},{root:feed,threshold:[.6]});
+  feed.querySelectorAll('.sw-slide').forEach(el=>{SW.obs.observe(el);swWire(el)});
+  swAhead()}
+// the sale on screen and the next 3: pictures preloaded; listing photos asked for the next 2
+function swAhead(){for(let k=0;k<=3;k++)swPrep(SW.cur+k,k>2);swPrep(SW.cur-1,true)}
 function swCount(){$('#sw-cnt').textContent=SW.sorted&&SW.sorted.length?(SW.cur+1)+' / '+SW.sorted.length:''}
-// load the first photo of a slide, and ask the helper for the listing's other photos (only for the slide on screen and the next)
 function swPrep(i,imgOnly){const L=SW.sorted||[];const r=L[i];const el=$('#sw-feed').querySelector(`.sw-slide[data-i="${i}"]`);if(!r||!el)return;
-  const im=el.querySelector('img[data-src]');if(im&&!im.src)im.src=im.dataset.src;if(imgOnly)return;
+  const ims=el.querySelectorAll('.sw-strip img');ims.forEach((im,j)=>{if(j===0){if(!im.src)im.src=r.img||im.dataset.hi;swHi(im)}else if(j===1){swHi(im)}});
+  if(imgOnly)return;
   const msg=el.querySelector('[data-msg]');
   if(!r.url||SW.photos.has(r.url))return;
-  if(!helperOn()||!photosOn()){if(msg&&i===SW.cur)msg.textContent=helperOn()?'Update the helper (v1.5.0) to see every photo of each listing. Showing the main photo.':'Showing the main photo. Install the helper to see every photo.';return}
-  if(SW.err==='check'){if(msg)msg.textContent='eBay wants a human check. Tap Open on eBay, do the check there, then come back.';return}
-  if(SW.asked.has(r.url))return;SW.asked.add(r.url);if(msg)msg.textContent='Loading more photos…';
-  window.postMessage({ccs:'photos',url:r.url},location.origin)}
+  if(!helperOn()||!photosOn()){if(msg&&i===SW.cur)msg.textContent=helperOn()?'Update the helper (v1.5.1) to see every photo of each listing. Showing the main photo.':'Showing the main photo. Install the helper to see every photo.';return}
+  if(SW.err==='check'){if(msg&&i===SW.cur)msg.textContent='eBay wants a human check. Tap Open on eBay, do the check there, then come back.';return}
+  if(SW.asked.has(r.url))return;SW.asked.add(r.url);
+  window.postMessage({ccs:'photos',url:r.url,ahead:i-SW.cur},location.origin)}
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='photosResult')return;
   SW.asked.delete(d.url);
   if(d.error){SW.err=d.error==='check'?'check':'';if(d.error!=='check')SW.photos.set(d.url,null)}else{SW.err='';SW.photos.set(d.url,(d.imgs||[]).slice(0,12))}
   if($('#sw').hidden||!SW.sorted)return;const i=SW.sorted.findIndex(r=>r.url===d.url);if(i<0)return;
   const el=$('#sw-feed').querySelector(`.sw-slide[data-i="${i}"]`);if(!el)return;
-  if(d.error){const m=el.querySelector('[data-msg]');if(m)m.textContent=d.error==='check'?'eBay wants a human check. Tap Open on eBay, do the check there, then come back.':'Couldn\'t load more photos for this one. Showing the main photo.';return}
-  const tmp=document.createElement('div');tmp.innerHTML=swSlide(SW.sorted[i],i);const fresh=tmp.firstElementChild;el.replaceWith(fresh);SW.obs.observe(fresh);
-  const st=fresh.querySelector('.sw-strip');const im=st.querySelector('img');if(im)im.src=im.dataset.src;
-  st.addEventListener('scroll',()=>{const k=Math.round(st.scrollLeft/st.clientWidth);fresh.querySelectorAll('.sw-dots i').forEach((x,j)=>x.classList.toggle('on',j===k));for(const c of [st.children[k],st.children[k+1]])if(c&&c.dataset&&c.dataset.src&&!c.src)c.src=c.dataset.src},{passive:true})});
+  if(d.error){const m=el.querySelector('[data-msg]');if(m&&i===SW.cur)m.textContent=d.error==='check'?'eBay wants a human check. Tap Open on eBay, do the check there, then come back.':'Couldn\'t load more photos for this one. Showing the main photo.';return}
+  // add the extra photos behind the one already showing (no reload, no flash)
+  const imgs=(d.imgs||[]).slice(0,12);if(imgs.length<2)return;const st=el.querySelector('.sw-strip');const have=st.querySelectorAll('img').length;
+  const pid=u=>(String(u).match(/\/g\/([^/]+)\//)||[])[1];const first=st.querySelector('img');
+  const rest=imgs.filter(u=>!first||pid(u)!==pid(first.dataset.hi));
+  if(first&&pid(first.dataset.hi)!==pid(imgs[0])){/* the thumbnail is the first gallery photo almost always; if not, keep it first anyway */}
+  st.insertAdjacentHTML('beforeend',rest.map((u,j)=>swImgTag(u,have+j,'')).join(''));
+  const n=st.querySelectorAll('img').length;el.querySelector('.sw-dots').innerHTML=Array.from({length:n},(_,j)=>`<i class="${j?'':'on'}"></i>`).join('');
+  if(!el.querySelector('.sw-nav'))el.querySelector('[data-msg]').insertAdjacentHTML('afterend','<button class="sw-nav l" data-nav="-1" aria-label="Previous photo">‹</button><button class="sw-nav r" data-nav="1" aria-label="Next photo">›</button>');
+  if(Math.abs(i-SW.cur)<=1){const sec=st.querySelectorAll('img')[1];if(sec)swHi(sec)}});
 document.addEventListener('click',e=>{
   if(e.target.closest('[data-sw="open"]')){e.preventDefault();swOpen();return}
   if(e.target.closest('#sw-x')){swClose();return}
@@ -1868,7 +1884,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.5.0'?' <b>An update (v1.5.0) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.5.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.5.1'?' <b>An update (v1.5.1) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.5.1&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});

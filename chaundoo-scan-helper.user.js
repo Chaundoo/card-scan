@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.5.0
+// @version      1.5.1
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -22,7 +22,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.5.0';
+  const VER = '1.5.1';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -93,16 +93,23 @@
             const c2 = await get('photos', {}); c2[url] = { imgs, at: Date.now() };
             const ks = Object.keys(c2); if (ks.length > 300) ks.sort((a, b) => c2[a].at - c2[b].at).slice(0, ks.length - 300).forEach(k => delete c2[k]);
             await set('photos', c2); reply(url, imgs);
-            await sleep(900 + Math.random() * 600); // gentle on eBay
+            await sleep(500 + Math.random() * 400); // still one page at a time, gentle on eBay
           }
         } finally { busy = false; }
       }
       window.addEventListener('message', e => {
         if (e.origin !== location.origin) return; const d = e.data || {};
         if (d.ccs !== 'photos' || !/^https:\/\/www\.ebay\.com\/itm\/\d+$/.test(d.url || '')) return;
-        const i = queue.indexOf(d.url); if (i >= 0) queue.splice(i, 1);
-        queue.unshift(d.url); if (queue.length > 3) queue.length = 3; // newest first; skip ones you already swiped past
-        pump();
+        (async () => {
+          // photos fetched before answer at once, no eBay page visit
+          const hit = (await get('photos', {}))[d.url];
+          if (hit && Date.now() - hit.at < 7 * 864e5) { reply(d.url, hit.imgs); return; }
+          const i = queue.indexOf(d.url); if (i >= 0) queue.splice(i, 1);
+          // the sale on screen goes first, then the ones right after it; ones you swiped past are dropped
+          if ((d.ahead || 0) <= 0) queue.unshift(d.url); else queue.push(d.url);
+          if (queue.length > 4) queue.length = 4;
+          pump();
+        })();
       });
     }
     return;
