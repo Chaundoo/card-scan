@@ -1089,8 +1089,10 @@ async function openCard(m){
   try{
     const c=await getJSON(API+m.lang+'/cards/'+encodeURIComponent(m.id));c.lang=m.lang;card=c;jpTwin=!!m.twin;if(!c.image&&m.image)c.image=m.image;
     enName=c.name;
-    if(m.lang==='ja'&&!(c.dexId&&c.dexId.length)){const t=await jaToEn(c.name);if(t)enName=t}
-    if(m.lang==='ja'&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|V-UNION|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
+    // the catalog drops LV.X from some names (Darkrai LV.X is just "Darkrai"); sellers always write it
+    if(/LV\.X/.test(c.rarity||'')&&!/LV\.?X/i.test(enName))enName+=' LV.X';
+    let jaT='';if(m.lang==='ja'){jaT=await jaToEn(c.name);if(jaT)enName=jaT}
+    if(m.lang==='ja'&&!jaT&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|V-UNION|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
     pushRecent({id:m.id,lang:m.lang,twin:!!m.twin,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
     renderCard();
@@ -1141,7 +1143,7 @@ function ebayQuery(){
   if(jaNoNum())return [(enName||card.name).replace(/[δ★☆]/g,'').trim(),'japanese',JA_OLD[card.set.id]||'',typedNum].filter(Boolean).join(' ');
   const p=prints[pIdx]||{};
   // eBay needs every word in the title, so keep only words sellers actually type
-  const nm=(enName||card.name).replace(/\b(with|the|of)\b/gi,' ').replace(/[-–]/g,' ').replace(/[δ★☆]/g,'').replace(/\s+/g,' ').trim();
+  const nm=(enName||card.name).replace(/\b(with|the|of)\b/gi,' ').replace(/[-–]/g,' ').replace(/[★☆]/g,' Star').replace(/[δ]/g,'').replace(/\s+/g,' ').trim();
   const parts=[nm];
   const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
   const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test((card.set&&card.set.id)||'');
@@ -1430,6 +1432,7 @@ function filterEbay(items){
   const name=(card.custom?card.name:(enName||card.name)).toLowerCase().replace(/[-–]/g,' ');
   const words=name.replace(/\b(with|the|of|japanese|promo)\b/g,' ').split(/[^a-z0-9'.δ]+/).filter(w=>w.length>=3);
   const nameTokens=new Set(name.split(/[^a-z0-9'.δ]+/).filter(Boolean));if(nameTokens.has('m'))nameTokens.add('mega');
+  if(/[★☆]/.test(name)){nameTokens.add('star');nameTokens.add('gold')}if(/δ/.test(name)){nameTokens.add('delta');nameTokens.add('δ')}if(/lv\.?x/.test(name)){nameTokens.add('lv.x');nameTokens.add('lvx')}
   if(!SPECIES_LC)SPECIES_LC=SPECIES.map(x=>x.toLowerCase()).filter(x=>x.length>=4&&!/[^a-z]/.test(x));
   const setName=((live.tcg&&live.tcg.setName)||(!jpTwin&&card.set&&card.set.name)||'').toLowerCase();
   const ctx={words:words.slice(0,4),nameTokens,lang:(jpTwin||card.lang==='ja')?'ja':card.custom?'any':'en',print:prints[pIdx]||{},first:((prints[pIdx]||{}).stamps||[]).some(s=>/1st/i.test(s)),
