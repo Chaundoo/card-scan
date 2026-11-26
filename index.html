@@ -1668,7 +1668,10 @@ getSets(S.lang).catch(()=>{});
 $('#pm-ready').addEventListener('click',async()=>{const b=$('#pm-ready');b.disabled=true;
   try{await loadPM(S.lang);$('#ocr-prog').hidden=true;b.hidden=true;pmStatus('Picture matcher is ready and saved on this device.','good')}
   catch(e){$('#ocr-prog').hidden=true;b.disabled=false;pmStatus(e.message==='nobuild'?'The card catalog is still being built. Try again in a bit.':'Download failed: '+esc(e.message),'bad')}});
-if(DEBUG)window.__ccs={embed,loadPM,PM,loadImg,lookScore,lookRefs,lookArtRefs,cardBox,bigImg,get card(){return card}};
+if(DEBUG)window.__ccs={embed,loadPM,PM,loadImg,lookScore,lookRefs,lookArtRefs,cardBox,bigImg,get card(){return card},
+  search,openCard,links,ebayQuery,tcgSearchWords,filterEbay,tcgRows,tcgLists,gotLive,key,
+  get prints(){return prints},get pIdx(){return pIdx},setPrint(i){pIdx=i;renderCard()},setCond(c){cond=c;renderSources();renderMath()},
+  get live(){return live},mathText(){return $('#math').innerText},tabText(s){return $('#src-'+s).innerText}};
 })();
 </script>
 </body></html>
