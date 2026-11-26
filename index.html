@@ -1886,6 +1886,8 @@ $('#recent').addEventListener('click',e=>{const b=e.target.closest('.ritem');if(
 $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('live',{});liveStore.clear();renderRecent()});
 
 /* ---------- helper status ---------- */
+// the helper can start a moment after the page (Safari loads extensions late): update the screen as soon as it shows up
+new MutationObserver(()=>{try{if(!$('#v-help').hidden)renderHelper();if(card)renderTabs()}catch{}}).observe(document.documentElement,{attributes:true,attributeFilter:['data-ccs-helper']});
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
   $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.5.2'?' <b>An update (v1.5.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.5.2&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
