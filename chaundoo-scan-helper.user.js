@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.4.0
+// @version      1.5.0
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -13,12 +13,16 @@
 // @grant        GM.setValue
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM.xmlHttpRequest
+// @grant        GM_xmlhttpRequest
+// @connect      www.ebay.com
+// @connect      ebay.com
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.4.0';
+  const VER = '1.5.0';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -53,6 +57,54 @@
       }
     });
     setInterval(() => deliver(document.documentElement.dataset.ccsKey), 1500);
+
+    /* photos for the sold slideshow: Card Scan asks for one listing at a time (the one on screen and the next).
+       One page at a time with a pause between, newest ask first, kept for 7 days, stops if eBay asks for a human check. */
+    const gmx = (typeof GM !== 'undefined' && GM && GM.xmlHttpRequest) ? GM.xmlHttpRequest.bind(GM) : (typeof GM_xmlhttpRequest !== 'undefined' ? GM_xmlhttpRequest : null);
+    if (gmx) {
+      document.documentElement.dataset.ccsPhotos = '1';
+      const queue = []; let busy = false, pauseUntil = 0;
+      const reply = (url, imgs, error) => window.postMessage({ ccs: 'photosResult', url, imgs: imgs || [], error: error || '' }, location.origin);
+      const page = url => new Promise((res, rej) => gmx({ method: 'GET', url, timeout: 20000, headers: { Accept: 'text/html' }, onload: r => res(r), onerror: () => rej(new Error('network')), ontimeout: () => rej(new Error('timeout')) }));
+      const big = u => String(u || '').replace(/s-l\d+(\.\w+)(\?.*)?$/, 's-l1600$1');
+      function photosOf(html) {
+        const d = new DOMParser().parseFromString(html, 'text/html'); const seen = new Set(), out = [];
+        const add = u => { const m = String(u || '').match(/i\.ebayimg\.com\/images\/g\/([A-Za-z0-9_~-]{6,})\//); if (!m || seen.has(m[1])) return; seen.add(m[1]); out.push(big(u.startsWith('//') ? 'https:' + u : u)); };
+        // the listing's own gallery only (not "similar items" further down)
+        d.querySelectorAll('.ux-image-carousel-item img, .ux-image-carousel img, [data-testid="ux-image-carousel"] img').forEach(i => add(i.getAttribute('data-zoom-src') || i.getAttribute('data-src') || i.getAttribute('src')));
+        if (!out.length) { const og = d.querySelector('meta[property="og:image"]'); if (og) add(og.content); }
+        return out;
+      }
+      async function pump() {
+        if (busy) return; busy = true;
+        try {
+          while (queue.length) {
+            const url = queue.shift();
+            const cache = await get('photos', {}); const hit = cache[url];
+            if (hit && Date.now() - hit.at < 7 * 864e5) { reply(url, hit.imgs); continue; }
+            if (Date.now() < pauseUntil) { reply(url, null, 'check'); continue; }
+            let r; try { r = await page(url); } catch (e) { reply(url, null, 'network'); await sleep(1500); continue; }
+            const html = r.responseText || '';
+            if (/splashui|captcha|challenge/i.test(r.finalUrl || '') || (r.status === 403) || (/captcha/i.test(html.slice(0, 20000)) && !/ux-image-carousel/.test(html))) {
+              pauseUntil = Date.now() + 3 * 60e3; reply(url, null, 'check'); queue.length = 0; break;
+            }
+            if (r.status >= 400) { reply(url, null, 'http' + r.status); await sleep(1500); continue; }
+            const imgs = photosOf(html).slice(0, 12);
+            const c2 = await get('photos', {}); c2[url] = { imgs, at: Date.now() };
+            const ks = Object.keys(c2); if (ks.length > 300) ks.sort((a, b) => c2[a].at - c2[b].at).slice(0, ks.length - 300).forEach(k => delete c2[k]);
+            await set('photos', c2); reply(url, imgs);
+            await sleep(900 + Math.random() * 600); // gentle on eBay
+          }
+        } finally { busy = false; }
+      }
+      window.addEventListener('message', e => {
+        if (e.origin !== location.origin) return; const d = e.data || {};
+        if (d.ccs !== 'photos' || !/^https:\/\/www\.ebay\.com\/itm\/\d+$/.test(d.url || '')) return;
+        const i = queue.indexOf(d.url); if (i >= 0) queue.splice(i, 1);
+        queue.unshift(d.url); if (queue.length > 3) queue.length = 3; // newest first; skip ones you already swiped past
+        pump();
+      });
+    }
     return;
   }
 
