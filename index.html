@@ -1122,7 +1122,7 @@ function buildPrints(c){
   }
   // the card list sometimes repeats a printing; keep one of each, and tell apart same-name printings with different TCGplayer pages
   const seen=new Map();const ded=[];for(const p of out){const k=p.label+'|'+(p.pid||'');if(seen.has(k))continue;seen.set(k,1);ded.push(p)}
-  ded.forEach((p,i)=>{const same=ded.filter(q=>q.label===p.label);if(same.length>1)p.label+=' ('+(same.indexOf(p)+1)+')'});
+  const cnt={},idx={};ded.forEach(p=>cnt[p.label]=(cnt[p.label]||0)+1);ded.forEach(p=>{const l=p.label;if(cnt[l]>1){idx[l]=(idx[l]||0)+1;p.label=l+' ('+idx[l]+')'}});
   return ded;
 }
 // Japanese sets before e-card (1996 base through Neo) print no card number; the catalog's number is only an index
@@ -1147,7 +1147,8 @@ function ebayQuery(){
   const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test((card.set&&card.set.id)||'');
   if(promo){
     // promos only print the number (085, SWSH050, SM60), never a set total; sellers write it several ways
-    const d=card.localId.replace(/^[A-Z-]+/i,'');const alts=[...new Set([card.localId,d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
+    const d=card.localId.replace(/^[A-Z-]+/i,'');const PRE={svp:'SVP',smp:'SM',bwp:'BW',xyp:'XY',hgssp:'HGSS',dpp:'DP',mep:'MEP'}[(card.set&&card.set.id||'').toLowerCase()];
+    const alts=[...new Set([card.localId,PRE&&d?PRE+d:'',d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
     parts.push('('+alts.join(',')+',promo)');
   }else{const lz=card.localId.match(/^([A-Z]+)0+(\d+)$/i); // H09 is printed H9: search either way
     parts.push(lz?'('+card.localId+','+lz[1]+lz[2]+')':card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''))}
@@ -1182,7 +1183,7 @@ function renderCard(){
   $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}</option>`).join('');$('#c-print').value=pIdx;
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   { const saved=ls.get('cnum',{})[(jpTwin?'jt':card.lang)+':'+card.id];const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
-    $('#c-num').value=saved!=null?saved:(jpTwin||card.custom)?(lastRead.num?lastRead.num+(/^\d+$/.test(lastRead.total||'')?'/'+lastRead.total:''):((live.tcg&&live.tcg.number)||'')):(card.localId?card.localId+(/^\d+$/.test(card.localId)&&off?'/'+off:''):'');
+    $('#c-num').value=saved!=null?saved:(jpTwin||card.custom)?(lastRead.num?lastRead.num+(/^\d+$/.test(lastRead.total||'')?'/'+lastRead.total:''):((live.tcg&&live.tcg.number)||'')):jaNoNum()?'':(card.localId?card.localId+(/^\d+$/.test(card.localId)&&off?'/'+off:''):'');
     $('#c-num').placeholder=jpTwin?'your card\'s number':'008/009'; }
   $('#c-q').value=ebayQuery();
   live=liveStore.get(key())||liveLoad(key())||{};liveStore.set(key(),live);document.documentElement.dataset.ccsKey=key();
