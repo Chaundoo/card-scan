@@ -651,13 +651,13 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.5.2">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.5.2">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.5.1">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.5.2">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -1449,16 +1449,19 @@ function swPrep(i,imgOnly){const L=SW.sorted||[];const r=L[i];const el=$('#sw-fe
   if(imgOnly)return;
   const msg=el.querySelector('[data-msg]');
   if(!r.url||SW.photos.has(r.url))return;
-  if(!helperOn()||!photosOn()){if(msg&&i===SW.cur)msg.textContent=helperOn()?'Update the helper (v1.5.1) to see every photo of each listing. Showing the main photo.':'Showing the main photo. Install the helper to see every photo.';return}
+  if(!helperOn()||!photosOn()){if(msg&&i===SW.cur)msg.textContent=helperOn()?'Update the helper (v1.5.2) to see every photo of each listing. Showing the main photo.':'Showing the main photo. Install the helper to see every photo.';return}
   if(SW.err==='check'){if(msg&&i===SW.cur)msg.textContent='eBay wants a human check. Tap Open on eBay, do the check there, then come back.';return}
   if(SW.asked.has(r.url))return;SW.asked.add(r.url);
   window.postMessage({ccs:'photos',url:r.url,ahead:i-SW.cur},location.origin)}
-window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='photosResult')return;
+window.addEventListener('message',e=>{if(e.origin!==location.origin)return;let d=e.data;if(!d||d.ccs!=='photosResult')return;
   SW.asked.delete(d.url);
+  // photos only count if the listing's own main photo (the search thumbnail) is among them; otherwise they're another listing's
+  const pidOf=u=>(String(u||'').match(/\/g\/([^/]+)\//)||[])[1];
+  if(!d.error&&SW.sorted){const r0=(SW.list||[]).find(r=>r.url===d.url);const tid=r0&&pidOf(r0.img);if(tid&&!(d.imgs||[]).some(u=>pidOf(u)===tid))d={...d,error:'moved',imgs:[]}}
   if(d.error){SW.err=d.error==='check'?'check':'';if(d.error!=='check')SW.photos.set(d.url,null)}else{SW.err='';SW.photos.set(d.url,(d.imgs||[]).slice(0,12))}
   if($('#sw').hidden||!SW.sorted)return;const i=SW.sorted.findIndex(r=>r.url===d.url);if(i<0)return;
   const el=$('#sw-feed').querySelector(`.sw-slide[data-i="${i}"]`);if(!el)return;
-  if(d.error){const m=el.querySelector('[data-msg]');if(m&&i===SW.cur)m.textContent=d.error==='check'?'eBay wants a human check. Tap Open on eBay, do the check there, then come back.':'Couldn\'t load more photos for this one. Showing the main photo.';return}
+  if(d.error){const m=el.querySelector('[data-msg]');if(m&&i===SW.cur)m.textContent=d.error==='check'?'eBay wants a human check. Tap Open on eBay, do the check there, then come back.':(d.error==='moved'?'eBay only shows this sale\'s main photo.':'Couldn\'t load more photos for this one. Showing the main photo.');return}
   // add the extra photos behind the one already showing (no reload, no flash)
   const imgs=(d.imgs||[]).slice(0,12);if(imgs.length<2)return;const st=el.querySelector('.sw-strip');const have=st.querySelectorAll('img').length;
   const pid=u=>(String(u).match(/\/g\/([^/]+)\//)||[])[1];const first=st.querySelector('img');
@@ -1884,7 +1887,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.5.1'?' <b>An update (v1.5.1) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.5.1&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.5.2'?' <b>An update (v1.5.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.5.2&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});

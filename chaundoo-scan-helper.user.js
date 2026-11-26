@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.5.1
+// @version      1.5.2
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -22,7 +22,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.5.1';
+  const VER = '1.5.2';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -80,19 +80,27 @@
         try {
           while (queue.length) {
             const url = queue.shift();
-            const cache = await get('photos', {}); const hit = cache[url];
+            const cache = await get('photos2', {}); const hit = cache[url];
             if (hit && Date.now() - hit.at < 7 * 864e5) { reply(url, hit.imgs); continue; }
             if (Date.now() < pauseUntil) { reply(url, null, 'check'); continue; }
-            let r; try { r = await page(url); } catch (e) { reply(url, null, 'network'); await sleep(1500); continue; }
+            // ?nordt=true stops eBay from redirecting a sold listing to a similar one that's still for sale
+            let r; try { r = await page(url + '?nordt=true&orig_cvip=true'); } catch (e) { reply(url, null, 'network'); await sleep(1500); continue; }
             const html = r.responseText || '';
             if (/splashui|captcha|challenge/i.test(r.finalUrl || '') || (r.status === 403) || (/captcha/i.test(html.slice(0, 20000)) && !/ux-image-carousel/.test(html))) {
               pauseUntil = Date.now() + 3 * 60e3; reply(url, null, 'check'); queue.length = 0; break;
             }
             if (r.status >= 400) { reply(url, null, 'http' + r.status); await sleep(1500); continue; }
+            // make sure the page is this listing and not another one eBay swapped in
+            const id = url.match(/\/itm\/(\d+)/)[1];
+            const pd = new DOMParser().parseFromString(html, 'text/html');
+            const canon = (pd.querySelector('link[rel="canonical"]') || {}).href || '';
+            const ogu = (pd.querySelector('meta[property="og:url"]') || {}).content || '';
+            const same = [r.finalUrl || '', canon, ogu].some(x => x.includes(id));
+            if (!same) { reply(url, null, 'moved'); await sleep(600); continue; }
             const imgs = photosOf(html).slice(0, 12);
-            const c2 = await get('photos', {}); c2[url] = { imgs, at: Date.now() };
+            const c2 = await get('photos2', {}); c2[url] = { imgs, at: Date.now() };
             const ks = Object.keys(c2); if (ks.length > 300) ks.sort((a, b) => c2[a].at - c2[b].at).slice(0, ks.length - 300).forEach(k => delete c2[k]);
-            await set('photos', c2); reply(url, imgs);
+            await set('photos2', c2); reply(url, imgs);
             await sleep(500 + Math.random() * 400); // still one page at a time, gentle on eBay
           }
         } finally { busy = false; }
@@ -102,7 +110,7 @@
         if (d.ccs !== 'photos' || !/^https:\/\/www\.ebay\.com\/itm\/\d+$/.test(d.url || '')) return;
         (async () => {
           // photos fetched before answer at once, no eBay page visit
-          const hit = (await get('photos', {}))[d.url];
+          const hit = (await get('photos2', {}))[d.url];
           if (hit && Date.now() - hit.at < 7 * 864e5) { reply(d.url, hit.imgs); return; }
           const i = queue.indexOf(d.url); if (i >= 0) queue.splice(i, 1);
           // the sale on screen goes first, then the ones right after it; ones you swiped past are dropped
