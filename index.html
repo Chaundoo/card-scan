@@ -419,6 +419,22 @@ code{background:var(--surface-2);padding:1px 5px;border-radius:5px;font-size:13p
 @media (max-width:620px){#v-log .log-tiles.four{grid-template-columns:1fr 1fr}}
 /* desktop layout: wider page, card page in two columns (card + math on the left, comps on the right) */
 html.desk #root{max-width:1240px;padding:0 24px 60px}
+/* live comps tabs */
+.stabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.stab{border:1px solid var(--line);background:var(--surface-2);border-radius:12px;padding:9px 8px;text-align:left;color:var(--ink);min-width:0}
+.stab b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stab small{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.stab small.ok{color:var(--pos)}
+.stab.on{border-color:var(--gold);background:var(--gold-soft)}
+.stab.on b{color:var(--gold-ink)}
+.readbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.readbar .btn.big{flex:1 1 200px;padding:13px 14px;font-size:16px}
+.readbar .when{flex:1 1 100%;font-size:12.5px;color:var(--muted)}
+.ctable td.c b{font-size:15px}
+.ctable tr.sel{background:var(--gold-soft)}
+.ctable tr[data-cc]{cursor:pointer}
+.searchset{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.searchset summary{font-weight:700;font-size:14px;cursor:pointer}
 html.desk #card-view.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:0 20px;align-items:start}
 html.desk #recent{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 html.desk #v-log .log-tiles b{font-size:26px}
@@ -530,43 +546,48 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
   <section id="v-card" hidden>
     <div id="card-empty" class="panel"><h2>No card picked yet</h2><p class="note">Snap or search a card on the Scan tab, then tap the match.</p></div>
     <div id="card-view" hidden>
-      <div class="panel">
+      <div class="panel chead">
         <div class="cardhead">
           <div class="art" id="c-art"></div>
           <div style="min-width:0;flex:1">
             <h2 id="c-name"></h2>
             <div class="sub" id="c-set"></div>
-            <div class="row" style="margin-top:10px">
-              <label class="field"><span>Printing</span><select id="c-print"></select></label>
-            </div>
-            <div class="row" style="margin-top:8px">
-              <div class="field" style="flex:1 1 100%"><span>Condition you're looking at</span>
-                <div class="seg" id="cond-seg"><button data-c="NM">NM</button><button data-c="LP" class="on">LP</button><button data-c="MP">MP</button><button data-c="HP">HP</button><button data-c="DMG">DMG</button></div>
-              </div>
-            </div>
+            <label class="field" style="margin-top:10px"><span>Printing</span><select id="c-print"></select></label>
           </div>
         </div>
-        <div class="kvs" id="c-quick" style="margin-top:12px"></div>
-        <div class="row" style="margin-top:12px">
-          <label class="field" style="flex:0 1 150px"><span>Card number</span><input id="c-num" placeholder="008/009" autocomplete="off" autocapitalize="characters"></label>
-          <label class="field" style="flex:1 1 180px"><span>eBay search words (edit if results look off)</span><input id="c-q" autocomplete="off"></label>
-        </div>
-        <div class="links" id="c-links"></div>
+        <div id="c-quick"></div>
       </div>
 
-      <div class="panel" id="pins-panel" hidden></div>
+      <div class="panel comps src" id="comps">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h2 style="margin:0">Live comps</h2><span class="sub" id="comps-helper"></span>
+        </div>
+        <div class="stabs" id="stabs" role="tablist"></div>
+        <div class="spane" id="src-tcg" data-src="tcg"></div>
+        <div class="spane" id="src-ebaySold" data-src="ebaySold" hidden></div>
+        <div class="spane" id="src-ebayList" data-src="ebayList" hidden></div>
+        <details class="searchset" id="searchset">
+          <summary>Search settings <span class="sub" id="searchset-sum"></span></summary>
+          <div class="row" style="margin-top:10px">
+            <label class="field" style="flex:0 1 150px"><span>Card number</span><input id="c-num" placeholder="008/009" autocomplete="off" autocapitalize="characters"></label>
+            <label class="field" style="flex:1 1 180px"><span>eBay search words (edit if results look off)</span><input id="c-q" autocomplete="off"></label>
+          </div>
+          <div class="links" id="c-links"></div>
+        </details>
+      </div>
+
       <div class="panel" id="math-panel">
         <div class="row" style="justify-content:space-between;margin-bottom:8px">
           <h2 style="margin:0">Buy and flip math</h2>
           <label class="set-chip gold" style="font-size:13px">Sticker $ <input id="c-sticker" type="number" inputmode="decimal" step="0.01" style="width:78px"></label>
         </div>
+        <div class="field" style="margin-bottom:10px"><span>Condition you're buying</span>
+          <div class="seg" id="cond-seg"><button data-c="NM">NM</button><button data-c="LP" class="on">LP</button><button data-c="MP">MP</button><button data-c="HP">HP</button><button data-c="DMG">DMG</button></div>
+        </div>
         <div id="math"></div>
       </div>
-
+      <div class="panel" id="pins-panel" hidden></div>
       <div class="panel" id="cfz-panel" hidden></div>
-      <div class="panel src" id="src-tcg"></div>
-      <div class="panel src" id="src-ebaySold"></div>
-      <div class="panel src" id="src-ebayList"></div>
     </div>
   </section>
 
@@ -1133,7 +1154,7 @@ function renderCard(){
   const c=card;const off=c.set&&c.set.cardCount&&c.set.cardCount.official;
   $('#c-name').textContent=c.name+(c.lang==='ja'&&enName&&enName!==c.name?' ('+enName+')':'');
   $('#c-set').textContent=card.custom?['Added by you',card.localId,card.lang==='ja'?'Japanese':'English'].filter(Boolean).join(' · '):(jpTwin?'Japanese version of this art · English twin: ':'')+[c.set&&c.set.name,c.localId+(off&&/^\d+$/.test(c.localId)?'/'+off:''),c.rarity,(jpTwin?'':c.lang==='ja'?'Japanese':'English')].filter(Boolean).join(' · ');
-  $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}${p.tcg&&p.tcg.marketPrice!=null?' · '+money(p.tcg.marketPrice):''}</option>`).join('');$('#c-print').value=pIdx;
+  $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}</option>`).join('');$('#c-print').value=pIdx;
   $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
   { const saved=ls.get('cnum',{})[(jpTwin?'jt':card.lang)+':'+card.id];const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
     $('#c-num').value=saved!=null?saved:(jpTwin||card.custom)?(lastRead.num?lastRead.num+(/^\d+$/.test(lastRead.total||'')?'/'+lastRead.total:''):((live.tcg&&live.tcg.number)||'')):(card.localId?card.localId+(/^\d+$/.test(card.localId)&&off?'/'+off:''):'');
@@ -1143,19 +1164,18 @@ function renderCard(){
   renderQuick();renderLinks();renderSources();renderMath();renderPins();renderCfz();
 }
 function renderQuick(){
-  if(card.custom){$('#c-quick').innerHTML='<p class="note" style="grid-column:1/-1;margin:0">A card you added yourself, so there are no catalog prices. Read eBay comps below. <button class="btn sm" id="own-del" style="margin-left:6px">Remove this card</button></p>';$('#own-del').onclick=()=>{if(!confirm('Remove '+card.name+' from your saved cards?'))return;ls.set('own',ownAll().filter(x=>x.id!==card.id));ls.set('recent',ls.get('recent',[]).filter(x=>x.id!==card.id));show('scan')};return}
-  if(jpTwin){$('#c-quick').innerHTML='<p class="note" style="grid-column:1/-1;margin:0">Japanese card matched through its English twin (same artwork). English prices don\'t apply, so read Japanese eBay comps below. Put the number from your card (bottom right) in the eBay search words if it isn\'t there.</p>';return}
-  const p=prints[pIdx]||{};const t=p.tcg;const cm=p.cm;
-  const k=[];
-  if(t){k.push(['TCG market',money(t.marketPrice)],['TCG low',money(t.lowPrice)],['TCG mid',money(t.midPrice)])}
-  $('#c-quick').innerHTML=k.length?k.map(([a,b])=>`<div class="kv"><span>${a}</span><b>${b}</b></div>`).join('')+`<p class="note" style="grid-column:1/-1;margin:0">Quick prices for this printing, all conditions blended${p.updated?', updated '+new Date(p.updated).toLocaleDateString():''}. Live comps below are sharper.</p>`:'<p class="note" style="grid-column:1/-1;margin:0">No quick price for this printing. Use the live comps below.</p>';
+  if(card.custom){$('#c-quick').innerHTML='<p class="note" style="margin:10px 0 0">A card you added yourself. Read eBay comps below. <button class="btn sm" id="own-del" style="margin-left:6px">Remove this card</button></p>';$('#own-del').onclick=()=>{if(!confirm('Remove '+card.name+' from your saved cards?'))return;ls.set('own',ownAll().filter(x=>x.id!==card.id));ls.set('recent',ls.get('recent',[]).filter(x=>x.id!==card.id));show('scan')};return}
+  if(jpTwin){$('#c-quick').innerHTML='<p class="note" style="margin:10px 0 0">Japanese card matched through its English twin (same artwork). Read Japanese eBay comps below, and put the number from your card (bottom right) in Search settings if it isn\'t there.</p>';return}
+  $('#c-quick').innerHTML='';
 }
 function renderLinks(){
   const L=links();
-  $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">TCGplayer <small>${!jpTwin&&!card.custom&&prints[pIdx]&&prints[pIdx].pid?'product':'search · tap your card'}</small></a>
-  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">eBay last sold <small>raw only</small></a>
-  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebayList)}" target="_blank" rel="noopener">eBay listings <small>Buy It Now</small></a>
+  $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">Open TCGplayer <small>${!jpTwin&&!card.custom&&prints[pIdx]&&prints[pIdx].pid?'product':'search'}</small></a>
+  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">Open eBay sold <small>raw only</small></a>
+  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebayList)}" target="_blank" rel="noopener">Open eBay listings <small>Buy It Now</small></a>
   <a class="btn" href="${esc(L.pc)}" target="_blank" rel="noopener">PriceCharting <small>extra check</small></a>`;
+  const num=$('#c-num').value.trim();$('#searchset-sum').textContent=num?'· #'+num:'· no card number';
+  if((jpTwin||card.custom)&&!num)$('#searchset').open=true;
 }
 $('#c-print').addEventListener('change',e=>{pIdx=+e.target.value;renderCard()});
 $('#cond-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cond=b.dataset.c;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x===b));renderSources();renderMath();const f=$('#cfz-from');if(f){f.value=CFZ_CONDS[cond];$('#cfz-to').value=CFZ_CONDS[cond]}});
@@ -1165,20 +1185,32 @@ $('#c-sticker').addEventListener('input',renderMath);
 
 /* ---------- live sources ---------- */
 const SRC={
-  tcg:{title:'TCGplayer sales & listings',hint:'On the TCGplayer page the helper opens "View More Data" and reads the latest sales plus the listings shown. Sign in to TCGplayer in that browser to see more than 5 sales.'},
-  ebaySold:{title:'eBay last sold',hint:'Raw sold listings (graded and lots are filtered out of the search and the math).'},
-  ebayList:{title:'eBay listings',hint:'Cheapest Buy It Now listings right now: the ceiling a buyer would pay.'}
+  tcg:{title:'TCGplayer',btn:'Read TCGplayer',hint:'Reads TCGplayer\'s latest sales and the listings on the page, then splits them by condition (NM, LP, MP, HP, DMG) for your printing. Sign in to TCGplayer in that browser to see more than 5 sales.'},
+  ebaySold:{title:'eBay sold',btn:'Read eBay last sold',hint:'Raw copies that actually sold on eBay. Graded, lots and other versions are left out. Condition isn\'t used here, because eBay sellers\' condition labels are often wrong.'},
+  ebayList:{title:'eBay listings',btn:'Read eBay listings',hint:'Cheapest Buy It Now listings right now: the ceiling a buyer would pay.'}
 };
+let srcTab=null;
+function srcStat(s){const d=live[s];if(!d)return 'Not read';
+  if(s==='tcg'){const r=tcgRows(d).filter(x=>x.cc===cond);const m=median(r.map(x=>x.price));return m!=null?cond+' '+money(m):timeAgo(d.at)}
+  const f=d.items?filterEbay(d.items).list:[];if(!f.length)return timeAgo(d.at);const pr=f.map(r=>r.price+(r.ship||0));
+  return s==='ebaySold'?f.length+' · '+money(median(pr)):'from '+money(Math.min(...pr))}
+function renderTabs(){
+  if(!srcTab)srcTab=(jpTwin||card.custom)?'ebaySold':'tcg';
+  $('#stabs').innerHTML=Object.keys(SRC).map(s=>`<button class="stab ${s===srcTab?'on':''}" role="tab" aria-selected="${s===srcTab}" data-stab="${s}"><b>${SRC[s].title}</b><small class="${live[s]?'ok':''}">${esc(srcStat(s))}</small></button>`).join('');
+  for(const s of Object.keys(SRC))$('#src-'+s).hidden=s!==srcTab;
+  $('#comps-helper').textContent=helperOn()?'Helper on ✓':'Helper not installed';
+}
+$('#stabs').addEventListener('click',e=>{const b=e.target.closest('[data-stab]');if(!b)return;srcTab=b.dataset.stab;renderTabs()});
 const helperOn=()=>!!document.documentElement.dataset.ccsHelper;
-function renderSources(){for(const s of Object.keys(SRC))renderSource(s)}
+function renderSources(){for(const s of Object.keys(SRC))renderSource(s);renderTabs()}
 function renderSource(s){
   const el=$('#src-'+s);const d=live[s];const L=links();const url=s==='tcg'?L.tcg:L[s];
   let body='';
   if(!d)body=`<p class="note">${esc(SRC[s].hint)}</p>`;
   else if(s==='tcg')body=tcgTable(d);
   else body=ebayTable(d,s);
-  el.innerHTML=`<div class="srchead"><div><h3>${SRC[s].title}</h3><span class="sub">${d?'Read '+timeAgo(d.at)+(d.via==='paste'?' (pasted)':''):'Not read yet'}</span></div>
-   <div class="row"><button class="btn sm primary" data-read="${s}">${d?'Read again':'Open &amp; read'}</button><button class="btn sm" data-paste="${s}">Paste</button></div></div>
+  el.innerHTML=`<div class="readbar"><button class="btn primary big" data-read="${s}">${d?'↻ Read again':esc(SRC[s].btn)}</button><button class="btn" data-paste="${s}">Paste</button>
+   <span class="when">${d?'Read '+timeAgo(d.at)+(d.via==='paste'?' (pasted)':'')+' · comps are kept on this phone for 24 hours':'Opens the page in a new tab; the helper reads it and sends the numbers back here.'}</span></div>
    <div class="paste" hidden><textarea rows="4" placeholder="On the ${s==='tcg'?'TCGplayer sales history':'eBay'} page: select all, copy, paste here"></textarea><div class="row" style="margin-top:6px"><button class="btn sm dark" data-parse="${s}">Use pasted text</button></div></div>
    ${body}`;
   if(s!=='tcg'&&d&&d.items){const n=document.createElement('p');n.className='note';n.id='look-'+s;el.appendChild(n);setTimeout(()=>checkLooks(s),50)}
@@ -1198,22 +1230,32 @@ function readSource(s,url){
 function gotLive(k,s,payload){
   const cur=liveStore.get(k)||liveLoad(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
   cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);
-  if(s==='tcg'&&k===key()&&card&&(jpTwin||card.custom)&&payload.number&&!$('#c-num').value.trim()){$('#c-num').value=payload.number;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=payload.number;ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks()}if(k===key()){live=cur;renderSource(s);renderMath()}
+  if(s==='tcg'&&k===key()&&card&&(jpTwin||card.custom)&&payload.number&&!$('#c-num').value.trim()){$('#c-num').value=payload.number;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=payload.number;ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks()}if(k===key()){live=cur;srcTab=s;renderSource(s);renderTabs();renderMath()}
 }
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='result'||!d.payload)return;gotLive(d.key,d.source,d.payload)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&helperOn()&&card)window.postMessage({ccs:'poll',key:key()},location.origin)});
 
 const condCode=t=>{t=(t||'').toUpperCase();if(/NEAR MINT|\bNM\b/.test(t))return'NM';if(/LIGHTLY|\bLP\b/.test(t))return'LP';if(/MODERATELY|\bMP\b/.test(t))return'MP';if(/HEAVILY|\bHP\b/.test(t))return'HP';if(/DAMAGED|\bDMG\b/.test(t))return'DMG';return''};
+// TCGplayer rows say the printing too ("Lightly Played Reverse Holofoil"): keep only rows for the printing you picked
+function printOK(text){const t=String(text||'').toLowerCase();if(!/holo|foil|normal|reverse|1st|unlimited/.test(t))return true;
+  const p=prints[pIdx]||{};const rev=/reverse/.test(t);if((p.type==='reverse')!==rev)return false;
+  if(p.type==='holo'&&/\bnormal\b/.test(t))return false;if(p.type==='normal'&&/holo|foil/.test(t))return false;
+  const pf=(p.stamps||[]).some(x=>/1st/i.test(x));if(/1st|unlimited/.test(t)&&/1st/.test(t)!==pf)return false;return true}
+function tcgRows(d){return (d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0&&printOK(r.cond+' '+(r.note||'')))}
+function tcgLists(d){return (d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0&&printOK(r.cond))}
 function tcgTable(d){
-  const rows=(d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)}));
-  const lst=(d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)}));
-  let h='';
-  if(d.market!=null||d.recent!=null)h+=`<div class="kvs" style="margin-bottom:8px"><div class="kv"><span>Market (${esc(d.condLabel||'page filter')})</span><b>${money(d.market)}</b></div><div class="kv"><span>Most recent sale</span><b>${money(d.recent)}</b></div></div>`;
-  if(rows.length)h+=`<table class="t"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th><th></th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td><td>${pinBtn('tcg',{title:'TCGplayer '+r.cond+(r.note?' – '+r.note:''),price:r.price,date:r.date,cond:r.cond,url:(live.tcg&&live.tcg.url)||''})}</td></tr>`).join('')}</table><p class="note">Faded rows are other conditions. Tap a condition above to switch.</p>`;
-  else h+='<p class="note">No sales rows came through. Tap Read again once the TCGplayer page has fully loaded.</p>';
-  if(lst.length)h+=`<details style="margin-top:10px"><summary>${lst.length} listings on the page</summary><table class="t" style="margin-top:6px"><tr><th>Cond</th><th>Seller</th><th class="r">Price + ship</th></tr>${lst.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.cond)}</td><td class="sub">${esc(r.seller||'')}</td><td class="r"><b>${money(r.price+(r.ship||0))}</b></td></tr>`).join('')}</table></details>`;
+  const rows=tcgRows(d),lst=tcgLists(d),other=(d.sales||[]).length-rows.length;let h='';
+  const C=['NM','LP','MP','HP','DMG'];
+  h+=`<table class="t ctable"><tr><th>Condition</th><th class="r">Sales</th><th class="r">Median sold</th><th class="r">Last sold</th><th class="r">Cheapest listed</th></tr>${C.map(c=>{
+    const rs=rows.filter(r=>r.cc===c),ls_=lst.filter(r=>r.cc===c);const md=median(rs.map(r=>r.price));const lo=ls_.length?Math.min(...ls_.map(r=>r.price+(r.ship||0))):null;
+    return `<tr data-cc="${c}" class="${c===cond?'sel':''}"><td class="c"><b>${c}</b></td><td class="r">${rs.length||'—'}</td><td class="r"><b>${md!=null?money(md):'—'}</b></td><td class="r">${rs.length?money(rs[0].price)+`<div class="sub">${esc(rs[0].date)}</div>`:'—'}</td><td class="r">${lo!=null?money(lo):'—'}</td></tr>`}).join('')}</table>
+    <p class="note">Tap a condition to use it in the math. ${esc((prints[pIdx]||{}).label||'')} only${other>0?` (${other} sale${other===1?'':'s'} of other printings left out)`:''}.</p>`;
+  if(rows.length)h+=`<details style="margin-top:8px"><summary>All ${rows.length} sales</summary><table class="t" style="margin-top:6px"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th><th></th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td><td>${pinBtn('tcg',{title:'TCGplayer '+r.cond+(r.note?' – '+r.note:''),price:r.price,date:r.date,cond:r.cond,url:(live.tcg&&live.tcg.url)||''})}</td></tr>`).join('')}</table></details>`;
+  else h+='<p class="note">No sales for this printing came through. Tap Read again once the TCGplayer page has fully loaded, or check the printing above.</p>';
+  if(lst.length)h+=`<details style="margin-top:8px"><summary>${lst.length} listings on the page</summary><table class="t" style="margin-top:6px"><tr><th>Cond</th><th>Seller</th><th class="r">Price + ship</th></tr>${lst.slice().sort((a,b)=>(a.price+(a.ship||0))-(b.price+(b.ship||0))).map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.cond)}</td><td class="sub">${esc(r.seller||'')}</td><td class="r"><b>${money(r.price+(r.ship||0))}</b></td></tr>`).join('')}</table></details>`;
   return h;
 }
+document.addEventListener('click',e=>{const tr=e.target.closest('.ctable tr[data-cc]');if(!tr||!card)return;cond=tr.dataset.cc;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x.dataset.c===cond));renderSources();renderMath()});
 function ebayTable(d,s){
   const items=d.items||[];if(!items.length)return'<p class="note">No listings came through.</p>';
   const f=filterEbay(items),keep=f.set;
@@ -1222,7 +1264,7 @@ function ebayTable(d,s){
   const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div>${ctl(r)}</td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
   const head=`<tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>`;
   const rest=items.filter(r=>!keep.has(r));
-  return `${f.num?(f.guessedTotal?`<p class="note" style="margin:0 0 8px">Matching ${esc(f.num.n)}/${esc(f.guessedTotal)} (set total worked out from the listings). If that's wrong, type the full number like 008/009 above.</p>`:''):`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in the box above so only that exact card counts.</p>`}
+  return `${f.num?(f.guessedTotal?`<p class="note" style="margin:0 0 8px">Matching ${esc(f.num.n)}/${esc(f.guessedTotal)} (set total worked out from the listings). If that's wrong, type the full number like 008/009 in Search settings below.</p>`:''):`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in Search settings below so only that exact card counts.</p>`}
     ${f.list.length?`<table class="t">${head}${f.list.map(row).join('')}</table>`:'<p class="note">None of these listings match your card closely enough. Check the card number above, or edit the eBay search words.</p>'}
     ${rest.length?`<details style="margin-top:8px"><summary class="sub">${rest.length} other listing${rest.length===1?'':'s'} left out. Each one says why. Tap ＋ Count it if it really is your card</summary><table class="t" style="margin-top:6px">${head}${rest.map(row).join('')}</table></details>`:''}
     <p class="note">Only listings that match your card count in the math. Tap ☆ to pin a sale you want to show a vendor. Your Count it / Don't count choices are kept for this card.</p>`;
@@ -1466,7 +1508,7 @@ function renderMath(){
   if(!card){return}
   const p=prints[pIdx]||{};const parts=[];const notes=[];
   // TCG condition sales
-  const ts=((live.tcg&&live.tcg.sales)||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.cc===cond&&r.price>0);
+  const ts=live.tcg?tcgRows(live.tcg).filter(r=>r.cc===cond):[];
   if(ts.length){const pr=ts.map(r=>r.price);const md=median(pr),r3=mean(pr.slice(0,3));const v=pr.length>=3?(md+r3)/2:md;parts.push({src:'TCGplayer '+cond+' sales',v,w:Math.min(pr.length,5),n:pr.length,md,r3});
     if(pr.length>=3&&r3>=md*1.08&&pr.slice(0,3).every(x=>x>md))notes.push(['slp',`Lag flag: last 3 TCGplayer ${cond} sales average ${money(r3)}, ${Math.round((r3/md-1)*100)}% over the median ${money(md)}. Stickers based on the median are likely behind.`]);
     if(pr.length>=3&&r3<=md*.92&&pr.slice(0,3).every(x=>x<md))notes.push(['neg',`Falling: last 3 ${cond} sales average ${money(r3)}, ${Math.round((1-r3/md)*100)}% under the median. Stickers may be too high.`]);
@@ -1479,9 +1521,8 @@ function renderMath(){
   let low=null;if(live.ebayList&&live.ebayList.items){const f=filterEbay(live.ebayList.items).list;if(f.length)low=Math.min(...f.map(r=>r.price+(r.ship||0)))}
   let mv=null,est=false;
   if(parts.length){const W=parts.reduce((a,b)=>a+b.w,0);mv=parts.reduce((a,b)=>a+b.v*b.w,0)/W}
-  else if(!jpTwin&&p.tcg&&p.tcg.marketPrice!=null){mv=p.tcg.marketPrice*COND_FACTOR[cond];est=true}
   const el=$('#math');
-  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need comps</h3><p class="note">Read eBay last sold or TCGplayer below and the buy and flip numbers fill in here.</p></div>';return}
+  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need live comps</h3><p class="note">Read TCGplayer or eBay last sold in Live comps above and the buy and flip numbers fill in here. '+(live.tcg&&!ts.length?'TCGplayer has no '+cond+' sales for this printing, so pick another condition or read eBay.':'')+'</p></div>';return}
   if(low!=null&&low<mv*.9)notes.push(['warn',`Cheapest eBay listing is ${money(low)}, under the comp value. Buyers can get it cheaper, so don't count on the top number.`]);
   lastMV=mv;const vendorExit=mv*S.vendor/100;
   const ebayNet=mv*(1-S.fee/100)-.4-S.ship;
@@ -1510,7 +1551,7 @@ function renderMath(){
    </div>
    ${est?'<p class="note">No live comps yet, so comp value is the TCGplayer market price scaled for condition. Read comps below for real numbers.</p>':''}
    <details style="margin-top:12px"><summary>How this is figured</summary><div class="math">
-     <p>Each source's value = average of its median and its last 3 sales (just the median if under 3 sales). Sources are blended by how many sales they have, with eBay weighted a bit more.</p>
+     <p>Each source's value = average of its median and its last 3 sales (just the median if under 3 sales). Sources are blended by how many sales they have, with eBay weighted a bit more. TCGplayer uses only sales in the condition you picked; eBay sold isn't split by condition, since eBay condition labels are often wrong.</p>
      ${parts.map(x=>`<div>${esc(x.src)}: ${x.n} sale${x.n===1?'':'s'}, median ${money(x.md)}${x.n>=3?', last 3 avg '+money(x.r3):''} → <b>${money(x.v)}</b></div>`).join('')}
      <p>Vendor exit = comp value × ${S.vendor}% = ${money(vendorExit)}<br>
      eBay exit = comp value × (1 − ${S.fee}%) − $0.40 − ${money(S.ship)} ship = ${money(ebayNet)}<br>
