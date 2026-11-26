@@ -1178,8 +1178,8 @@ function links(){
   const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name+(lastRead.num&&/^\d+$/.test(lastRead.num)?' '+lastRead.num.padStart(3,'0'):'')):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(tcgSearchWords());
   return {
     tcg,
-    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&ul_noapp=1#ul_noapp',
-    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15&ul_noapp=1#ul_noapp',
+    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&Graded=No&ul_noapp=1#ul_noapp',
+    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15&Graded=No&ul_noapp=1#ul_noapp',
     pc:'https://www.pricecharting.com/search-products?type=prices&q='+encodeURIComponent(q)
   };
 }
@@ -1219,7 +1219,7 @@ $('#c-sticker').addEventListener('input',renderMath);
 /* ---------- live sources ---------- */
 const SRC={
   tcg:{title:'TCGplayer',btn:'Read TCGplayer',hint:'The helper reads the card\'s page, then filters it to each condition in turn (NM, LP, MP, HP, DMG) and reads each one\'s own sales history and cheapest listings. Takes about 30–45 seconds; leave the TCGplayer tab open until it says ✓. Sign in to TCGplayer in that browser to see more than 5 sales per condition.'},
-  ebaySold:{title:'eBay sold',btn:'Read eBay last sold',hint:'Raw copies that actually sold on eBay. Graded, lots and other versions are left out. Condition isn\'t used here, because eBay sellers\' condition labels are often wrong.'},
+  ebaySold:{title:'eBay sold',btn:'Read eBay last sold',hint:'Raw copies that actually sold on eBay. The search asks eBay for ungraded cards only, which also drops slabs whose title never says PSA; graded, lots and other versions are left out too. Condition isn\'t used here, because eBay sellers\' condition labels are often wrong.'},
   ebayList:{title:'eBay listings',btn:'Read eBay listings',hint:'Cheapest Buy It Now listings right now: the ceiling a buyer would pay.'}
 };
 let srcTab=null;
