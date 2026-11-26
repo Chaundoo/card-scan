@@ -1091,6 +1091,7 @@ async function openCard(m){
     enName=c.name;
     // the catalog drops LV.X from some names (Darkrai LV.X is just "Darkrai"); sellers always write it
     if(/LV\.X/.test(c.rarity||'')&&!/LV\.?X/i.test(enName))enName+=' LV.X';
+    if(/prime/i.test(c.rarity||'')&&!/prime/i.test(enName))enName+=' Prime';
     let jaT='';if(m.lang==='ja'){jaT=await jaToEn(c.name);if(jaT)enName=jaT}
     if(m.lang==='ja'&&!jaT&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|V-UNION|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
@@ -1156,7 +1157,8 @@ function ebayQuery(){
     const alts=coded?[...new Set([/[A-Z]/i.test(card.localId)?card.localId:'',PRE&&d?PRE+d:'',PRE==='SVP'?d:''].filter(Boolean))]:[...new Set([card.localId,d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
     parts.push(alts.length>1||!coded?'('+alts.join(',')+(coded?'':',promo')+')':alts[0]);
   }else{const lz=card.localId.match(/^([A-Z]+)0+(\d+)$/i); // H09 is printed H9: search either way
-    parts.push(lz?'('+card.localId+','+lz[1]+lz[2]+')':card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''))}
+    const ja3=card.lang==='ja'&&/^\d+$/.test(card.localId);
+    parts.push(lz?'('+card.localId+','+lz[1]+lz[2]+')':ja3?card.localId.padStart(3,'0')+(off?'/'+String(off).padStart(3,'0'):''):card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''))}
   if(card.lang==='ja')parts.push('japanese');
   // reverse holos are also sold as "<set> stamp" / "stamped" / "rev holo": any of those words finds them
   if(p.type==='reverse')parts.push('(reverse,rev,stamp,stamped)');
@@ -1372,7 +1374,7 @@ const JA_ERA=[[/^SV/i,2023,2026],[/^SM/i,2016,2019],[/^S\d/i,2019,2023],[/^XY/i,
 function jaCodeYears(code){for(const[re,a,b]of JA_ERA)if(re.test(code))return[a,b];return null}
 // reprint sets that reuse old artwork and card numbers: only OK when your card is from that set
 const REPRINTS=[/25th anniversary|30th anniversary|30th celebration|\b30c\b|anniversary collection|\bs8a\b/,/\bcelebrations?\b/,/classic collection/,/mc ?donald'?s|happy meal/,/trick or trade/,/\bpokemon go\b/];
-function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?![\d.])/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
+function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?!\d|\.\d)/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
 function relevance(r,ctx){
   const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ').replace(/\blv\.?\s?x\b/g,'lv.x').replace(/\blevel\s?x\b/g,'lv.x')+' ';
   if(!(r.price>0))return NO('no price');if(GRADED.test(r.title))return NO('graded slab');if(BAD.test(r.title))return NO('not a single raw card (lot, sealed, proxy, accessory…)');
@@ -1462,7 +1464,7 @@ function filterEbay(items){
   // price check against the rest: way low is usually damaged, fake or a different card; way high is usually graded.
   // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
   const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
-  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.2:.25),hi=med*(strong?5:4);
+  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.2:.25),hi=med*(strong?6:5);
     if(v>=lo&&v<=hi)return true;why.set(r,v<lo?'price far below the others: check the photos (fake, damaged or a different card?)':'price far above the others: often graded or a typo');return false});
   // your own calls win: tap "Count it" / "Don't count" on a row
   const ov=ls.get('ebayov',{})[key()]||{};
