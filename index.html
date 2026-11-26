@@ -1684,7 +1684,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.0'?' <b>An update (v1.2.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.0'?' <b>An update (v1.3.0) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});
