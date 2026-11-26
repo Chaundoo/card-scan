@@ -609,13 +609,13 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.3.1">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -1306,7 +1306,7 @@ function ebayTable(d,s){
   const f=filterEbay(items),keep=f.set;
   const ctl=r=>{const id=ovId(r),o=f.ov[id];if(keep.has(r))return o==='in'?`<div class="sub">Counted by you · <button class="lnk" data-ov="${esc(id)}">undo</button></div>`:`<button class="lnk sub" data-ov="${esc(id)}" data-v="out">Don't count</button>`;
     return `<div class="why">${esc(f.why.get(r)||'')}</div>${o==='out'?`<button class="lnk" data-ov="${esc(id)}">undo</button>`:`<button class="lnk" data-ov="${esc(id)}" data-v="in">＋ Count it</button>`}`};
-  const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div>${ctl(r)}</td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
+  const row=r=>`<tr class="${keep.has(r)?'':'dim'}"><td>${r.img?`<img class="thumb" loading="lazy" src="${esc(r.img)}" alt="">`:''}</td><td><div class="ttl">${r.url?`<a href="${esc(itemUrl(r.url))}" target="_blank" rel="noopener">${esc(r.title)}</a>`:esc(r.title)}</div>${r.bo?'<div class="sub" style="color:var(--gold-ink)">Best offer accepted: real price was lower</div>':''}${ctl(r)}</td>${s==='ebaySold'?`<td class="sub" style="white-space:nowrap">${esc(shortDate(r.date))}</td>`:''}<td class="r"><b>${money(r.price)}</b>${r.ship?`<div class="sub">+${money(r.ship)}</div>`:''}</td><td>${pinBtn(s,r)}</td></tr>`;
   const head=`<tr><th></th><th>Title</th>${s==='ebaySold'?'<th>Sold</th>':''}<th class="r">Price</th><th></th></tr>`;
   const rest=items.filter(r=>!keep.has(r));
   return `${f.num?(f.guessedTotal?`<p class="note" style="margin:0 0 8px">Matching ${esc(f.num.n)}/${esc(f.guessedTotal)} (set total worked out from the listings). If that's wrong, type the full number like 008/009 in Search settings below.</p>`:''):`<p class="msg info" style="margin:0 0 8px">Tip: put your card's number (like 008/009) in Search settings below so only that exact card counts.</p>`}
@@ -1336,8 +1336,8 @@ const shortDate=s=>{if(!s)return'';const d=new Date(s);return isNaN(d)?s:d.toLoc
 const OTHER_LANG=/(?:^|[^a-z])(japanese|japan|jpn|jp|korean|kor|chinese|chn|thai|indonesian|german|deutsch|deutsche|ger|deu|italian|italiano|italiana|ita|french|fran[cç]ais|francaise|fr|fra|spanish|espa[nñ]ol|espanola|spa|esp|portuguese|portugu[eê]s|por|dutch|nederlands|polish|polski|russian)(?![a-z])/;
 const LANG_NAME={japan:'Japanese',jpn:'Japanese',jp:'Japanese',japanese:'Japanese',korean:'Korean',kor:'Korean',chinese:'Chinese',chn:'Chinese',thai:'Thai',indonesian:'Indonesian',german:'German',deutsch:'German',deutsche:'German',ger:'German',deu:'German',italian:'Italian',italiano:'Italian',italiana:'Italian',ita:'Italian',french:'French','français':'French','francais':'French',francaise:'French',fr:'French',fra:'French',spanish:'Spanish','español':'Spanish',espanol:'Spanish',espanola:'Spanish',spa:'Spanish',esp:'Spanish',portuguese:'Portuguese','português':'Portuguese',portugues:'Portuguese',por:'Portuguese',dutch:'Dutch',nederlands:'Dutch',polish:'Polish',polski:'Polish',russian:'Russian'};
 let WHY='';const NO=w=>{WHY=w;return -1};
-const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag|ace grading|ace \d+|graded|slab|gem mint)\b/i;
-const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coins?|token|pin|figure|plush|jumbo|oversize|complete set|set of|fan ?art|fan made|fan promo|novelty|sticker|stickers|decal|magnet|key ?chain|case|display|insert|inserts|skin|poster|art print|acrylic|(gold|silver|black|rainbow) foil|choose your card|pick your card|you pick|pick your|choose your|complete your set|singles|master set|dealer)\b/i;
+const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag \d+|tag gem|tag graded|cag|ags|ace grading|ace \d+|graded|grade \d+|slab|slabbed|gem mint|gem mt|perfect subs?)\b/i;
+const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coins?|token|pin|figure|plush|jumbo|oversize|complete set|set of|fan ?art|fan made|fan promo|novelty|sticker|stickers|decal|magnet|key ?chain|case|display|insert|inserts|skin|poster|art print|acrylic|(gold|silver|black|rainbow) foil|choose your card|pick your card|you pick|pick your|choose your|complete your set|singles|master set|dealer|altered|see variations|variations|world championships?|championship decks?|wcd)\b/i;
 // set and subset names that contain a version word but are not a version of the card
 const SET_PHRASES=['vmax climax','vstar universe','gx ultra shiny','tag team gx','shiny star v','vmax rising','ex battle boost','v starter','vstar special','gx battle boost','vmax special','radiant collection','trainer gallery','galarian gallery','shiny vault','black star','wizards black star','lost origin','shining legends','shining fates','crystal guardians','legendary treasures','legendary collection','hidden legends','legends awakened','star birth','dark explorers','team rocket','dragon frontiers','delta species','legend maker','mega evolution','mega evolutions','pokemon prime','ex series','ex era','darkness ablaze'];
 function setPhraseRes(setName,num){const out=SET_PHRASES.slice();const sn=String(setName||'').toLowerCase().replace(/[-–:&]/g,' ').replace(/\s+/g,' ').trim();
@@ -1371,10 +1371,10 @@ function yearWindow(){const y=setYear();if(!y)return null;const promo=/promo/i.t
 const JA_ERA=[[/^SV/i,2023,2026],[/^SM/i,2016,2019],[/^S\d/i,2019,2023],[/^XY/i,2013,2016],[/^BW/i,2010,2013],[/^M\d/i,2025,2030]];
 function jaCodeYears(code){for(const[re,a,b]of JA_ERA)if(re.test(code))return[a,b];return null}
 // reprint sets that reuse old artwork and card numbers: only OK when your card is from that set
-const REPRINTS=[/25th anniversary|anniversary collection|\bs8a\b/,/\bcelebrations?\b/,/classic collection/,/mc ?donald'?s|happy meal/,/trick or trade/,/\bpokemon go\b/];
+const REPRINTS=[/25th anniversary|30th anniversary|30th celebration|\b30c\b|anniversary collection|\bs8a\b/,/\bcelebrations?\b/,/classic collection/,/mc ?donald'?s|happy meal/,/trick or trade/,/\bpokemon go\b/];
 function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?![\d.])/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
 function relevance(r,ctx){
-  const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ')+' ';
+  const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ').replace(/\blv\.?\s?x\b/g,'lv.x').replace(/\blevel\s?x\b/g,'lv.x')+' ';
   if(!(r.price>0))return NO('no price');if(GRADED.test(r.title))return NO('graded slab');if(BAD.test(r.title))return NO('not a single raw card (lot, sealed, proxy, accessory…)');
   // must name the card
   if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return NO("title doesn't name your card");
@@ -1410,7 +1410,8 @@ function relevance(r,ctx){
   const code=parseJaSet(r.title);
   if(code){if(ctx.jaCode&&code.toLowerCase()!==ctx.jaCode.toLowerCase())return NO('different Japanese set');
     const era=jaCodeYears(code);if(!ctx.jaCode&&ctx.yr&&era&&(era[1]<ctx.yr.lo||era[0]>ctx.yr.hi))return NO('different Japanese set')}
-  let score=1;const nums=titleNums(r.title);if(ctx.print.type==='reverse'&&(stampy||/\b(reverse|rev)\b/.test(t)))score+=1;
+  let score=1;const nums=titleNums(r.title);
+  if(ctx.num&&ctx.num.t&&new Set(nums.filter(x=>x.t===ctx.num.t).map(x=>x.n)).size>1)return NO('sold together with another card');if(ctx.print.type==='reverse'&&(stampy||/\b(reverse|rev)\b/.test(t)))score+=1;
   if(ctx.num){const hit=nums.some(x=>x.n===ctx.num.n&&(!ctx.num.t||!x.t||x.t===ctx.num.t));
     if(nums.length&&!hit)return NO('different card number'); // different card number
     if(hit)score+=3}
@@ -1461,7 +1462,7 @@ function filterEbay(items){
   // price check against the rest: way low is usually damaged, fake or a different card; way high is usually graded.
   // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
   const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
-  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.3:.4),hi=med*(strong?3:2.5);
+  if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.2:.25),hi=med*(strong?5:4);
     if(v>=lo&&v<=hi)return true;why.set(r,v<lo?'price far below the others: check the photos (fake, damaged or a different card?)':'price far above the others: often graded or a typo');return false});
   // your own calls win: tap "Count it" / "Don't count" on a row
   const ov=ls.get('ebayov',{})[key()]||{};
@@ -1572,7 +1573,7 @@ function renderMath(){
     if(pr.length>=3&&r3<=md*.92&&pr.slice(0,3).every(x=>x<md))notes.push(['neg',`Falling: last 3 ${cond} sales average ${money(r3)}, ${Math.round((1-r3/md)*100)}% under the median. Stickers may be too high.`]);
   }
   // eBay sold
-  let eb=null;if(live.ebaySold&&live.ebaySold.items){const f=filterEbay(live.ebaySold.items).list;const byDate=f.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));const pr=byDate.map(r=>r.price+(r.ship||0));
+  let eb=null;if(live.ebaySold&&live.ebaySold.items){let f=filterEbay(live.ebaySold.items).list;const nb=f.filter(r=>!r.bo);if(nb.length>=3)f=nb;const byDate=f.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));const pr=byDate.map(r=>r.price+(r.ship||0));
     if(pr.length){const md=median(pr),r3=mean(pr.slice(0,3));const v=pr.length>=3?(md+r3)/2:md;eb={md,r3,n:pr.length,min:Math.min(...pr),max:Math.max(...pr)};parts.push({src:'eBay sold (raw)',v,w:Math.min(pr.length,6)*1.2,n:pr.length,md,r3});
       if(pr.length>=3&&r3>=md*1.08)notes.push(['slp',`eBay trending up: last 3 sold average ${money(r3)} vs median ${money(md)}.`]);}}
   // eBay listings low
@@ -1702,7 +1703,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.0'?' <b>An update (v1.3.0) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.1'?' <b>An update (v1.3.1) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.1&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});

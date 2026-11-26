@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.3.0
+// @version      1.3.1
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -18,7 +18,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.3.0';
+  const VER = '1.3.1';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -130,6 +130,8 @@
     const items = [];
     for (const li of document.querySelectorAll('li.s-card, li.s-item, ul.srp-results > li')) {
       const t = li.innerText || '';
+      // eBay pads thin results with "Results matching fewer words": those aren't your card, so stop there
+      if (/results matching fewer words|fewer words/i.test(t) && !li.querySelector('a[href*="/itm/"]')) break;
       let title = txt(li.querySelector('.s-card__title, .s-item__title, [role="heading"]'));
       title = title.replace(/^New Listing\s*/i, '').replace(/Opens in a new window or tab/i, '').trim();
       if (!title || /^Shop on eBay/i.test(title)) continue;
@@ -140,8 +142,8 @@
       const sm = t.match(/\+\s*\$([\d,]+\.\d{2})\s*(shipping|delivery|postage)/i);
       const img = li.querySelector('img');
       const a = li.querySelector('a[href*="/itm/"]');
-      items.push({ title, price, ship: /free (shipping|delivery)/i.test(t) ? 0 : (sm ? num(sm[1]) : 0), date: dm ? dm[1] : null, img: img ? (img.currentSrc || img.src || img.getAttribute('data-src') || '') : '', url: a ? a.href.split('?')[0] : '' });
-      if (items.length >= 40) break;
+      items.push({ title, price, ship: /free (shipping|delivery)/i.test(t) ? 0 : (sm ? num(sm[1]) : 0), date: dm ? dm[1] : null, img: img ? (img.currentSrc || img.src || img.getAttribute('data-src') || '') : '', url: a ? a.href.split('?')[0] : '', bo: /best offer accepted/i.test(t), auction: /\d+\s+bids?\b/i.test(t) });
+      if (items.length >= 60) break;
     }
     if (!items.length) {
       // nothing matched every word: retry once with the numbers/extra codes dropped (name words and exclusions kept)
