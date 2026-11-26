@@ -319,6 +319,11 @@ a{color:inherit}
 .seg{display:inline-flex;background:var(--surface-2);border-radius:10px;padding:3px;gap:2px}
 .seg button{border:none;background:transparent;border-radius:8px;padding:6px 12px;font-weight:700;color:var(--muted);font-size:13.5px}
 #cond-seg{display:grid;grid-template-columns:repeat(5,1fr);width:100%}
+.gradebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+#kind-seg button{padding:7px 14px}
+#grade-seg{display:grid;grid-template-columns:repeat(10,1fr);width:100%}
+#grade-seg button{padding:6px 0}
+.gradebar .sub{flex:1 1 100%}
 #cond-seg button{padding:6px 0}
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .field{display:flex;flex-direction:column;gap:3px;flex:1 1 120px;min-width:0}
@@ -562,6 +567,11 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
           <h2 style="margin:0">Live comps</h2><span class="sub" id="comps-helper"></span>
         </div>
+        <div class="gradebar">
+          <div class="seg" id="kind-seg"><button data-k="raw">Raw</button><button data-k="psa">PSA slab</button></div>
+          <div class="seg" id="grade-seg" hidden><button data-g="1">1</button><button data-g="2">2</button><button data-g="3">3</button><button data-g="4">4</button><button data-g="5">5</button><button data-g="6">6</button><button data-g="7">7</button><button data-g="8">8</button><button data-g="9">9</button><button data-g="10">10</button></div>
+          <span class="sub" id="grade-note"></span>
+        </div>
         <div class="stabs" id="stabs" role="tablist"></div>
         <div class="spane" id="src-tcg" data-src="tcg"></div>
         <div class="spane" id="src-ebaySold" data-src="ebaySold" hidden></div>
@@ -581,7 +591,7 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
           <h2 style="margin:0">Buy and flip math</h2>
           <label class="set-chip gold" style="font-size:13px">Sticker $ <input id="c-sticker" type="number" inputmode="decimal" step="0.01" style="width:78px"></label>
         </div>
-        <div class="field" style="margin-bottom:10px"><span>Condition you're buying</span>
+        <div class="field" id="cond-field" style="margin-bottom:10px"><span>Condition you're buying</span>
           <div class="seg" id="cond-seg"><button data-c="NM">NM</button><button data-c="LP" class="on">LP</button><button data-c="MP">MP</button><button data-c="HP">HP</button><button data-c="DMG">DMG</button></div>
         </div>
         <div id="math"></div>
@@ -1065,6 +1075,9 @@ $('#matches').addEventListener('click',e=>{const t=e.target.closest('.tile');if(
 
 /* ---------- card ---------- */
 let lastMV=null,card=null,prints=[],pIdx=0,cond='LP',live={},enName='',lastRead={},jpTwin=false;
+// Raw or a PSA slab of one grade. Graded comps are kept apart from raw ones (own saved reads, own Count it choices).
+let grade=ls.get('grade','raw');if(!/^(raw|[1-9]|10)$/.test(String(grade)))grade='raw';
+const psaG=()=>grade==='raw'?'':String(grade);
 const liveStore=new Map();
 // comps you read are kept on this phone for 24 hours, then dropped
 const LIVE_TTL=24*3600e3;
@@ -1076,7 +1089,7 @@ function liveSave(k,v){const a=liveAll();a[k]=v;const keys=Object.keys(a);
   if(keys.length>60){keys.sort((x,y)=>Math.max(...Object.values(a[x]).map(o=>o.at))-Math.max(...Object.values(a[y]).map(o=>o.at)));for(const old of keys.slice(0,keys.length-60))delete a[old]}
   try{localStorage.setItem('ccs.live',JSON.stringify(a))}catch{for(const s of Object.values(v))for(const it of (s.items||[]))delete it.img;ls.set('live',a)}}
 function liveSummary(prefix){const a=liveAll();let at=0,n=0;for(const k of Object.keys(a))if(k.startsWith(prefix))for(const s of Object.values(a[k])){n++;at=Math.max(at,s.at)}return n?{n,at}:null}
-const key=()=>card?(jpTwin?'jt':card.lang)+':'+card.id+':'+pIdx:'';
+const key=()=>card?(jpTwin?'jt':card.lang)+':'+card.id+':'+pIdx+(psaG()?':psa'+psaG():''):'';
 async function openCard(m){
   show('card');$('#card-empty').hidden=true;$('#card-view').hidden=false;
   card=null;prints=[];live={};document.documentElement.dataset.ccsKey='';$('#c-links').innerHTML='';$('#c-quick').innerHTML='';$('#c-q').value='';['tcg','ebaySold','ebayList'].forEach(x=>$('#src-'+x).innerHTML='');$('#math').innerHTML='';$('#pins-panel').hidden=true;
@@ -1174,12 +1187,14 @@ function tcgSearchWords(){const nm=(enName||card.name).replace(/[δ★☆]/g,'')
   return promo?nm+' '+card.localId:nm+(card.set&&card.set.name?' '+card.set.name.replace(/^(Pok[eé]mon|EX|SV|SWSH|SM|XY|BW)\s*[:-]?\s*/i,'').trim():'')}
 function links(){
   const p=prints[pIdx]||{};const q=$('#c-q').value.trim()||ebayQuery();
-  const ex=' -psa -bgs -cgc -sgc -graded -lot';
+  const g=psaG();const ex=g?' -bgs -beckett -cgc -sgc -lot':' -psa -bgs -cgc -sgc -graded -lot';
+  // slabs: eBay's own Grade + Grader filters, so a PSA 9 whose title never says "PSA 9" still shows up
+  const gf=g?'&Graded=Yes&Grade='+g+'&Professional%2520Grader=Professional%2520Sports%2520Authenticator%2520%2528PSA%2529':'&Graded=No';
   const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name+(lastRead.num&&/^\d+$/.test(lastRead.num)?' '+lastRead.num.padStart(3,'0'):'')):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(tcgSearchWords());
   return {
     tcg,
-    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&Graded=No&ul_noapp=1#ul_noapp',
-    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15&Graded=No&ul_noapp=1#ul_noapp',
+    ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13'+gf+'&ul_noapp=1#ul_noapp',
+    ebayList:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_BIN=1&_sop=15'+gf+'&ul_noapp=1#ul_noapp',
     pc:'https://www.pricecharting.com/search-products?type=prices&q='+encodeURIComponent(q)
   };
 }
@@ -1188,7 +1203,7 @@ function renderCard(){
   $('#c-name').textContent=c.name+(c.lang==='ja'&&enName&&enName!==c.name?' ('+enName+')':'');
   $('#c-set').textContent=card.custom?['Added by you',card.localId,card.lang==='ja'?'Japanese':'English'].filter(Boolean).join(' · '):(jpTwin?'Japanese version of this art · English twin: ':'')+[c.set&&c.set.name,c.localId+(off&&/^\d+$/.test(c.localId)?'/'+off:''),c.rarity,(jpTwin?'':c.lang==='ja'?'Japanese':'English')].filter(Boolean).join(' · ');
   $('#c-print').innerHTML=prints.map((p,i)=>`<option value="${i}">${esc(p.label)}</option>`).join('');$('#c-print').value=pIdx;
-  $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));
+  $$('#cond-seg button').forEach(b=>b.classList.toggle('on',b.dataset.c===cond));renderGradeBar();
   { const saved=ls.get('cnum',{})[(jpTwin?'jt':card.lang)+':'+card.id];const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
     $('#c-num').value=saved!=null?saved:(jpTwin||card.custom)?(lastRead.num?lastRead.num+(/^\d+$/.test(lastRead.total||'')?'/'+lastRead.total:''):((live.tcg&&live.tcg.number)||'')):jaNoNum()?'':(card.localId?card.localId+(/^\d+$/.test(card.localId)&&off?'/'+off:''):'');
     $('#c-num').placeholder=jpTwin?'your card\'s number':'008/009'; }
@@ -1204,7 +1219,7 @@ function renderQuick(){
 function renderLinks(){
   const L=links();
   $('#c-links').innerHTML=`<a class="btn" href="${esc(L.tcg)}" target="_blank" rel="noopener">Open TCGplayer <small>${!jpTwin&&!card.custom&&prints[pIdx]&&prints[pIdx].pid?'product':'search'}</small></a>
-  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">Open eBay sold <small>raw only</small></a>
+  <a class="btn" href="go.html?u=${encodeURIComponent(L.ebaySold)}" target="_blank" rel="noopener">Open eBay sold <small>${psaG()?'PSA '+psaG():'raw only'}</small></a>
   <a class="btn" href="go.html?u=${encodeURIComponent(L.ebayList)}" target="_blank" rel="noopener">Open eBay listings <small>Buy It Now</small></a>
   <a class="btn" href="${esc(L.pc)}" target="_blank" rel="noopener">PriceCharting <small>extra check</small></a>`;
   const num=$('#c-num').value.trim();$('#searchset-sum').textContent=num?'· #'+num:'· no card number';
@@ -1213,6 +1228,14 @@ function renderLinks(){
 $('#c-print').addEventListener('change',e=>{pIdx=+e.target.value;renderCard()});
 $('#cond-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;cond=b.dataset.c;$$('#cond-seg button').forEach(x=>x.classList.toggle('on',x===b));renderSources();renderMath();const f=$('#cfz-from');if(f){f.value=CFZ_CONDS[cond];$('#cfz-to').value=CFZ_CONDS[cond]}});
 $('#c-q').addEventListener('change',()=>renderLinks());
+function renderGradeBar(){const g=psaG();
+  $$('#kind-seg button').forEach(b=>b.classList.toggle('on',(b.dataset.k==='psa')===!!g));
+  $('#grade-seg').hidden=!g;$$('#grade-seg button').forEach(b=>b.classList.toggle('on',b.dataset.g===g));
+  $('#grade-note').textContent=g?'PSA '+g+' slabs of the printing you picked · eBay only (TCGplayer doesn\'t sell slabs)':'';
+  $('#cond-field').hidden=!!g}
+function setGrade(g){grade=g;ls.set('grade',g);if(g!=='raw')ls.set('psaLast',g);if(g!=='raw'&&srcTab==='tcg')srcTab='ebaySold';if(g==='raw'&&!(jpTwin||(card&&card.custom)))srcTab='tcg';if(card)renderCard();else renderGradeBar()}
+$('#kind-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.k==='raw')setGrade('raw');else if(!psaG())setGrade(String(ls.get('psaLast','10')))});
+$('#grade-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setGrade(b.dataset.g)});
 $('#c-num').addEventListener('change',()=>{if(!card)return;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=$('#c-num').value.trim();ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks();renderSources();renderMath()});
 $('#c-sticker').addEventListener('input',renderMath);
 
@@ -1227,10 +1250,15 @@ function srcStat(s){const d=live[s];if(!d)return 'Not read';
   if(s==='tcg'){const r=tcgRows(d).filter(x=>x.cc===cond);const m=median(r.map(x=>x.price));return m!=null?cond+' '+money(m):timeAgo(d.at)}
   const f=d.items?filterEbay(d.items).list:[];if(!f.length)return timeAgo(d.at);const pr=f.map(r=>r.price+(r.ship||0));
   return s==='ebaySold'?f.length+' · '+money(median(pr)):'from '+money(Math.min(...pr))}
+const srcKeys=()=>Object.keys(SRC).filter(s=>!(psaG()&&s==='tcg'));
+function hintFor(s){const g=psaG();if(!g)return SRC[s].hint;
+  return s==='ebaySold'?'PSA '+g+' slabs that actually sold on eBay. The search uses eBay\'s own Grade and Grader filters, so a PSA '+g+' slab still counts even if its title never says so. Other graders (BGS, CGC, TAG…), other grades, half grades, qualified grades (OC, ST…), signed slabs and raw "PSA ready" cards are left out, and the printing you picked (normal, holo, reverse) still has to match.'
+    :'Cheapest PSA '+g+' Buy It Now listings right now for the printing you picked: the ceiling a buyer would pay.'}
 function renderTabs(){
-  if(!srcTab)srcTab=(jpTwin||card.custom)?'ebaySold':'tcg';
-  $('#stabs').innerHTML=Object.keys(SRC).map(s=>`<button class="stab ${s===srcTab?'on':''}" role="tab" aria-selected="${s===srcTab}" data-stab="${s}"><b>${SRC[s].title}</b><small class="${live[s]?'ok':''}">${esc(srcStat(s))}</small></button>`).join('');
+  if(!srcTab||(psaG()&&srcTab==='tcg'))srcTab=(psaG()||jpTwin||card.custom)?'ebaySold':'tcg';
+  $('#stabs').innerHTML=srcKeys().map(s=>`<button class="stab ${s===srcTab?'on':''}" role="tab" aria-selected="${s===srcTab}" data-stab="${s}"><b>${SRC[s].title}</b><small class="${live[s]?'ok':''}">${esc(srcStat(s))}</small></button>`).join('');
   for(const s of Object.keys(SRC))$('#src-'+s).hidden=s!==srcTab;
+  $('#stabs').style.gridTemplateColumns=psaG()?'repeat(2,1fr)':'';
   $('#comps-helper').textContent=helperOn()?'Helper on ✓':'Helper not installed';
 }
 $('#stabs').addEventListener('click',e=>{const b=e.target.closest('[data-stab]');if(!b)return;srcTab=b.dataset.stab;renderTabs()});
@@ -1239,7 +1267,7 @@ function renderSources(){for(const s of Object.keys(SRC))renderSource(s);renderT
 function renderSource(s){
   const el=$('#src-'+s);const d=live[s];const L=links();const url=s==='tcg'?L.tcg:L[s];
   let body='';
-  if(!d)body=`<p class="note">${esc(SRC[s].hint)}</p>`;
+  if(!d)body=`<p class="note">${esc(hintFor(s))}</p>`;
   else if(s==='tcg')body=tcgTable(d);
   else body=ebayTable(d,s);
   el.innerHTML=`<div class="readbar"><button class="btn primary big" data-read="${s}">${d?'↻ Read again':esc(SRC[s].btn)}</button><button class="btn" data-paste="${s}">Paste</button>
@@ -1256,7 +1284,7 @@ function renderSource(s){
 function timeAgo(t){const m=Math.round((Date.now()-t)/6e4);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' hr ago'}
 function readSource(s,url){
   const p=prints[pIdx]||{};
-  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+(jpTwin?' (Japanese)':' '+card.localId),productId:(jpTwin||card.custom)?null:(p.pid||null),pick:s==='tcg'&&!/\/product\//.test(url),cond,num:(($('#c-num').value.trim().split('/')[0])||(jaNoNum()?'':card.localId)||'')},location.origin);
+  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+(jpTwin?' (Japanese)':' '+card.localId)+(psaG()?' PSA '+psaG():''),productId:(jpTwin||card.custom)?null:(p.pid||null),pick:s==='tcg'&&!/\/product\//.test(url),cond,num:(($('#c-num').value.trim().split('/')[0])||(jaNoNum()?'':card.localId)||'')},location.origin);
   else if(!sessionStorage.getItem('ccs.nohelper')){sessionStorage.setItem('ccs.nohelper','1');setTimeout(()=>alert('Helper not installed, so the page will just open. Copy the page and use Paste, or set up the helper on the Helper tab.'),50)}
   window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
@@ -1344,7 +1372,7 @@ const pinsAll=()=>ls.get('pins',{});
 function isPinned(src,r){const a=pinsAll()[pinCard()]||[];return a.some(p=>p.pid===pinId(src,r))}
 function pinBtn(src,r){const on=isPinned(src,r);return `<button class="pin ${on?'on':''}" data-pin="${esc(src)}" data-row="${esc(JSON.stringify({title:r.title,price:r.price,ship:r.ship||0,date:r.date||'',img:r.img||'',url:r.url||'',cond:r.cond||''}))}" aria-label="${on?'Unpin':'Pin'} this sale">${on?'★':'☆'}</button>`}
 function togglePin(src,r){const a=pinsAll(),k=pinCard();const list=a[k]||[];const id=pinId(src,r);const i=list.findIndex(p=>p.pid===id);
-  if(i>=0)list.splice(i,1);else list.unshift({pid:id,src,...r,pinnedAt:Date.now(),printing:(prints[pIdx]||{}).label||''});
+  if(i>=0)list.splice(i,1);else list.unshift({pid:id,src,...r,pinnedAt:Date.now(),printing:((prints[pIdx]||{}).label||'')+(psaG()?' · PSA '+psaG():'')});
   if(list.length)a[k]=list;else delete a[k];ls.set('pins',a);renderPins();renderSources()}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-pin]');if(!b)return;e.preventDefault();togglePin(b.dataset.pin,JSON.parse(b.dataset.row))});
 const SRCNAME={ebaySold:'eBay sold',ebayList:'eBay listing',tcg:'TCGplayer sale'};
@@ -1359,7 +1387,7 @@ const OTHER_LANG=/(?:^|[^a-z])(japanese|japan|jpn|jp|korean|kor|chinese|chn|thai
 const LANG_NAME={japan:'Japanese',jpn:'Japanese',jp:'Japanese',japanese:'Japanese',korean:'Korean',kor:'Korean',chinese:'Chinese',chn:'Chinese',thai:'Thai',indonesian:'Indonesian',german:'German',deutsch:'German',deutsche:'German',ger:'German',deu:'German',italian:'Italian',italiano:'Italian',italiana:'Italian',ita:'Italian',french:'French','français':'French','francais':'French',francaise:'French',fr:'French',fra:'French',spanish:'Spanish','español':'Spanish',espanol:'Spanish',espanola:'Spanish',spa:'Spanish',esp:'Spanish',portuguese:'Portuguese','português':'Portuguese',portugues:'Portuguese',por:'Portuguese',dutch:'Dutch',nederlands:'Dutch',polish:'Polish',polski:'Polish',russian:'Russian'};
 let WHY='';const NO=w=>{WHY=w;return -1};
 const GRADED=/\b(psa|bgs|beckett|cgc|sgc|tag \d+|tag gem|tag graded|cag|ags|ace grading|ace \d+|graded|grade \d+|slab|slabbed|gem mint|gem mt|perfect subs?)\b/i;
-const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coins?|token|pin|figure|plush|jumbo|oversize|complete set|set of|fan ?art|fan made|fan promo|novelty|sticker|stickers|decal|magnet|key ?chain|case|display|insert|inserts|skin|poster|art print|acrylic|(gold|silver|black|rainbow) foil|choose your card|pick your card|you pick|pick your|choose your|complete your set|singles|master set|dealer|altered|see variations|variations|world championships?|championship decks?|wcd)\b/i;
+const BAD=/\b(psa|bgs|beckett|cgc|sgc|graded|slab|lot|lots|bundle|proxy|custom|orica|fake|replica|metal|digital|code card|sealed|booster|pack|packs|sleeves?|deck|decks|deck box|binder|playmat|tin|coins?|token|pin|figure|plush|jumbo|oversize|complete set|set of|fan ?art|fan made|fan promo|novelty|sticker|stickers|decal|magnet|key ?chain|case|display|insert|inserts|skin|poster|art print|acrylic|(gold|silver|black|rainbow) foil|choose your card|pick your card|you pick|pick your|choose your|complete your set|singles|master set|dealer|altered|see variations|variations|world championships?|championship decks?|wcd|signed|autograph|autographed|sketch)\b/i;
 // set and subset names that contain a version word but are not a version of the card
 const SET_PHRASES=['vmax climax','vstar universe','gx ultra shiny','tag team gx','shiny star v','vmax rising','ex battle boost','v starter','vstar special','gx battle boost','vmax special','radiant collection','trainer gallery','galarian gallery','shiny vault','black star','wizards black star','lost origin','shining legends','shining fates','crystal guardians','legendary treasures','legendary collection','hidden legends','legends awakened','star birth','dark explorers','team rocket','dragon frontiers','delta species','legend maker','mega evolution','mega evolutions','pokemon prime','ex series','ex era','darkness ablaze'];
 function setPhraseRes(setName,num){const out=SET_PHRASES.slice();const sn=String(setName||'').toLowerCase().replace(/[-–:&]/g,' ').replace(/\s+/g,' ').trim();
@@ -1397,7 +1425,15 @@ const REPRINTS=[/25th anniversary|30th anniversary|30th celebration|\b30c\b|anni
 function titleNums(t){return [...t.matchAll(/(?<![\w.$])#?\s*([A-Za-z]{0,4}\d{1,3})\s*\/\s*([A-Za-z]{0,4}\d{1,3})(?!\d|\.\d)/g)].map(m=>({n:normNum(m[1]),t:normNum(m[2])}))}
 function relevance(r,ctx){
   const t=' '+r.title.toLowerCase().replace(/[-–]/g,' ').replace(/\blv\.?\s?x\b/g,'lv.x').replace(/\blevel\s?x\b/g,'lv.x')+' ';
-  if(!(r.price>0))return NO('no price');if(GRADED.test(r.title))return NO('graded slab');if(BAD.test(r.title))return NO('not a single raw card (lot, sealed, proxy, accessory…)');
+  if(!(r.price>0))return NO('no price');
+  if(ctx.psa){const tl=r.title.toLowerCase();
+    if(OTHER_GRADER.test(tl))return NO('graded by another company');
+    if(/\b(ungraded|not graded|psa ready|ready to grade|ready for grading|grade (it|ready)|candidates?|potential|gradable|possible)\b/.test(tl)||(/\braw\b/.test(tl)&&!/\bpsa\s*\d/.test(tl)))return NO('raw card, not a slab');
+    if(/\b(signed|autograph|autographed|auto|sketch|psa\s*\/?\s*dna)\b/.test(tl))return NO('signed or autographed slab');
+    const gs=psaGrades(tl);if(gs.length&&!gs.includes(ctx.psa))return NO('PSA '+gs.find(x=>x!==ctx.psa)+', not PSA '+ctx.psa);
+    if(/\bpsa\s*\d{1,2}(\.5)?\s*\(?\s*(oc|st|pd|of|mk|mc)\b/.test(tl))return NO('qualified grade (OC, ST, MK…)');
+    if(BAD.test(r.title.replace(/\b(psa|graded|slab|slabbed|gem mint|gem mt|gem)\b/gi,' ')))return NO('not a single slab (lot, sealed, proxy, accessory…)')}
+  else{if(GRADED.test(r.title))return NO('graded slab');if(BAD.test(r.title))return NO('not a single raw card (lot, sealed, proxy, accessory…)')}
   // must name the card
   if(ctx.words.length&&ctx.words.filter(w=>t.includes(w)).length<Math.ceil(ctx.words.length*.75))return NO("title doesn't name your card");
   // language
@@ -1445,6 +1481,11 @@ function relevance(r,ctx){
   if(ctx.num&&!nums.length&&ctx.setWords.length&&!setHits)return NO('no number or set in title'); // no number and no set named: can't tell it's your card
   return score;
 }
+const OTHER_GRADER=/\b(bgs|beckett|cgc|sgc|tag \d+|tag gem|tag graded|cag|ags|ace grading|ace \d+|hga|gma|mnt grading|isa)\b/;
+// grades a title gives after "PSA" ("PSA 9", "PSA GEM MINT 10", "PSA NM-MT 8", "PSA10"), plus a bare "Gem Mint 10"
+function psaGrades(tl){const out=[];
+  for(const m of tl.matchAll(/(?:^|[^a-z])psa[\s:#-]*(?:(?:gem|mint|mt|nm|near|ex|vg|good|gd|fair|fr|poor|pr)[\s\-+]*){0,3}(\d{1,2}(?:\.5)?)(?![\d\/]|\.\d)/g)){const v=+m[1];if(v>=1&&v<=10)out.push(String(m[1]))}
+  if(!out.length&&/\bgem\s*(mint|mt)\s*10\b/.test(tl))out.push('10');return out}
 let SPECIES_LC=null;
 const ovId=r=>(r.title||'')+'|'+r.price+'|'+(r.date||'');
 function setOv(id,v){const a=ls.get('ebayov',{}),k=key();const o=a[k]||{};if(v)o[id]=v;else delete o[id];if(Object.keys(o).length)a[k]=o;else delete a[k];
@@ -1462,7 +1503,7 @@ function filterEbay(items){
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
     exEra:/^ex\d/i.test((card.set&&card.set.id)||''),jaOld:jaNoNum(),
     promo:(()=>{const pre={svp:'svp',smp:'sm',bwp:'bw',xyp:'xy',hgssp:'hgss',dpp:'dp',swshp:'swsh',mep:'mep'}[((card.set&&card.set.id)||'').toLowerCase()];const d=(card.localId||'').replace(/^[A-Z-]+/i,'');return pre&&/^\d+$/.test(d)?pre+(+d):''})(),
-    yr:yearWindow(),setLc:setName,setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
+    yr:yearWindow(),setLc:setName,psa:psaG(),setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
   const rel=r=>{WHY='';const s=relevance(r,ctx);return {r,s,why:WHY}};
   let scored=items.map(rel);
   // number typed without the set total (e.g. "008"): work out the total from the listings that are left.
@@ -1485,7 +1526,7 @@ function filterEbay(items){
   // A strong photo match only gets a wider window, so a played copy of your card isn't mixed into near-mint math.
   const tot=r=>r.price+(r.ship||0);const med=median(ok.map(tot));
   if(med&&ok.length>=4)ok=ok.filter(r=>{const v=tot(r),strong=r.look!=null&&r.look>=.6;const lo=med*(strong?.2:.25),hi=med*(strong?6:5);
-    if(v>=lo&&v<=hi)return true;why.set(r,v<lo?'price far below the others: check the photos (fake, damaged or a different card?)':'price far above the others: often graded or a typo');return false});
+    if(v>=lo&&v<=hi)return true;why.set(r,v<lo?'price far below the others: check the photos (fake, damaged or a different card?)':psaG()?'price far above the others: often a typo or a different card':'price far above the others: often graded or a typo');return false});
   // your own calls win: tap "Count it" / "Don't count" on a row
   const ov=ls.get('ebayov',{})[key()]||{};
   for(const r of items){const o=ov[ovId(r)];if(o==='in'&&!ok.includes(r)){ok.push(r);why.delete(r)}else if(o==='out'&&ok.includes(r)){ok=ok.filter(x=>x!==r);why.set(r,'you left this one out')}}
@@ -1589,21 +1630,22 @@ function renderMath(){
   if(!card){return}
   const p=prints[pIdx]||{};const parts=[];const notes=[];
   // TCG condition sales
-  const ts=live.tcg?tcgRows(live.tcg).filter(r=>r.cc===cond):[];
+  const g=psaG(),cl=g?'PSA '+g:cond;
+  const ts=!g&&live.tcg?tcgRows(live.tcg).filter(r=>r.cc===cond):[];
   if(ts.length){const pr=ts.map(r=>r.price);const md=median(pr),r3=mean(pr.slice(0,3));const v=pr.length>=3?(md+r3)/2:md;parts.push({src:'TCGplayer '+cond+' sales',v,w:Math.min(pr.length,5),n:pr.length,md,r3});
     if(pr.length>=3&&r3>=md*1.08&&pr.slice(0,3).every(x=>x>md))notes.push(['slp',`Lag flag: last 3 TCGplayer ${cond} sales average ${money(r3)}, ${Math.round((r3/md-1)*100)}% over the median ${money(md)}. Stickers based on the median are likely behind.`]);
     if(pr.length>=3&&r3<=md*.92&&pr.slice(0,3).every(x=>x<md))notes.push(['neg',`Falling: last 3 ${cond} sales average ${money(r3)}, ${Math.round((1-r3/md)*100)}% under the median. Stickers may be too high.`]);
   }
   // eBay sold
   let eb=null;if(live.ebaySold&&live.ebaySold.items){let f=filterEbay(live.ebaySold.items).list;const nb=f.filter(r=>!r.bo);if(nb.length>=3)f=nb;const byDate=f.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));const pr=byDate.map(r=>r.price+(r.ship||0));
-    if(pr.length){const md=median(pr),r3=mean(pr.slice(0,3));const v=pr.length>=3?(md+r3)/2:md;eb={md,r3,n:pr.length,min:Math.min(...pr),max:Math.max(...pr)};parts.push({src:'eBay sold (raw)',v,w:Math.min(pr.length,6)*1.2,n:pr.length,md,r3});
+    if(pr.length){const md=median(pr),r3=mean(pr.slice(0,3));const v=pr.length>=3?(md+r3)/2:md;eb={md,r3,n:pr.length,min:Math.min(...pr),max:Math.max(...pr)};parts.push({src:g?'eBay sold (PSA '+g+')':'eBay sold (raw)',v,w:Math.min(pr.length,6)*1.2,n:pr.length,md,r3});
       if(pr.length>=3&&r3>=md*1.08)notes.push(['slp',`eBay trending up: last 3 sold average ${money(r3)} vs median ${money(md)}.`]);}}
   // eBay listings low
   let low=null;if(live.ebayList&&live.ebayList.items){const f=filterEbay(live.ebayList.items).list;if(f.length)low=Math.min(...f.map(r=>r.price+(r.ship||0)))}
   let mv=null,est=false;
   if(parts.length){const W=parts.reduce((a,b)=>a+b.w,0);mv=parts.reduce((a,b)=>a+b.v*b.w,0)/W}
   const el=$('#math');
-  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need live comps</h3><p class="note">Read TCGplayer or eBay last sold in Live comps and the buy and flip numbers fill in here. '+(live.tcg&&!ts.length?'TCGplayer has no '+cond+' sales for this printing, so pick another condition or read eBay.':'')+'</p></div>';return}
+  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need live comps</h3><p class="note">'+(g?'Read eBay last sold for PSA '+g+' slabs in Live comps and the buy and flip numbers fill in here. '+(live.ebaySold?'No PSA '+g+' sales of this printing came through: try a grade next to it, or tap ＋ Count it on a row.':''):'Read TCGplayer or eBay last sold in Live comps and the buy and flip numbers fill in here. ')+(!g&&live.tcg&&!ts.length?'TCGplayer has no '+cond+' sales for this printing, so pick another condition or read eBay.':'')+'</p></div>';return}
   if(low!=null&&low<mv*.9)notes.push(['warn',`Cheapest eBay listing is ${money(low)}, under the comp value. Buyers can get it cheaper, so don't count on the top number.`]);
   lastMV=mv;const vendorExit=mv*S.vendor/100;
   const ebayNet=mv*(1-S.fee/100)-.4-S.ship;
@@ -1622,7 +1664,7 @@ function renderMath(){
   if(eb&&eb.md&&(eb.max-eb.min)/eb.md>.6&&conf==='High')conf='Medium';
   const confCls=conf==='High'?'pos':conf==='Medium'?'warn':'neg';
   el.innerHTML=`<div class="verdict ${cls}"><div class="row" style="justify-content:space-between"><h3>${esc(head)}</h3><span class="pill ${confCls}">Comps: ${conf}${n?' ('+n+')':''}</span></div><p class="note" style="color:inherit">${esc(line)}</p>
-   <div class="bigs"><div class="kv"><span>Open offer</span><b>${money(open)}</b></div><div class="kv"><span>Walk-away max</span><b>${money(maxBuy)}</b></div><div class="kv"><span>Comp value (${cond})</span><b>${money(mv)}</b></div></div></div>
+   <div class="bigs"><div class="kv"><span>Open offer</span><b>${money(open)}</b></div><div class="kv"><span>Walk-away max</span><b>${money(maxBuy)}</b></div><div class="kv"><span>Comp value (${esc(cl)})</span><b>${money(mv)}</b></div></div></div>
    ${notes.map(([c,t])=>`<div class="msg" style="background:var(--${c==='slp'?'slp-soft':c==='neg'?'neg-soft':'gold-soft'});color:var(--${c==='slp'?'slp':c==='neg'?'neg':'gold-ink'})">${esc(t)}</div>`).join('')}
    <div class="kvs" style="margin-top:10px">
      <div class="kv"><span>Sell to vendor (${S.vendor}%)</span><b>${money(vendorExit)}</b></div>
@@ -1705,7 +1747,7 @@ async function renderCfz(){
     const bought=parseFloat($('#cfz-bought').value),soldV=$('#cfz-sold').value.trim(),sold=parseFloat(soldV);
     if(!(bought>=0)){$('#cfz-bought').focus();return}
     const p=prints[pIdx]||{};const cfzId=Object.keys(map).find(id=>map[id][1]&&p.pid&&String(map[id][1])===String(p.pid))||null;
-    const sale={id:'r'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),cardId:cfzId,label:cfzId?'':cfzLabel(),bought,sold:soldV===''?'':sold,status:soldV===''?'holding':'sold',
+    const slab=psaG();const sale={id:'r'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36),cardId:slab?null:cfzId,label:cfzId&&!slab?'':cfzLabel()+(slab?' PSA '+slab:''),bought,sold:soldV===''?'':sold,status:soldV===''?'holding':'sold',
       from:$('#cfz-from').value,to:$('#cfz-to').value,boughtOn:todayStr()};
     if(soldV!=='')sale.soldOn=todayStr();const v=$('#cfz-vendor').value.trim();if(v)sale.vendor=v;if(lastMV)sale.expected=Math.round(lastMV*S.vendor)/100;
     if(!cfzId&&card.image&&!card.custom){const u=imgUrl(card.image);if(/^https:/.test(u||''))sale.img=u}
