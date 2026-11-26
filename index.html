@@ -1532,11 +1532,13 @@ function relevance(r,ctx){
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
   // version words only count outside set/subset names ("Radiant Collection", "Lost Origin", "Black Star Promo", your card's own set…)
   let tv=t;
-  if(ctx.exEra)tv=tv.replace(/(^|[^a-z0-9])ex (ruby|sapphire|sandstorm|dragon|team|hidden|fire ?red|leaf ?green|deoxys|emerald|unseen|delta|legend|holon|crystal|power|series|era)(?![a-z])/g,' ');
+  if(ctx.exEra)tv=tv.replace(/(^|[^a-z0-9])ex (ruby|sapphire|sandstorm|dragon|team|hidden|fire ?red|leaf ?green|deoxys|emerald|unseen|delta|legend|holon|crystal|power|series|era|(?:19|20)\d\d)(?![a-z0-9])/g,' ');
   for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(tv))return NO('different version ('+v.toUpperCase()+')');
   if(ctx.print.type!=='reverse'&&/\b(reverse|rev holo)\b/.test(t))return NO('reverse holo');
   if(ctx.print.type==='holo'&&/\bnon[ -]?holo\b/.test(t))return NO('non-holo version');
+  // reverse holo picked and the card also has a regular holo: "Holo" with no reverse/stamp word is the regular holo
+  if(ctx.print.type==='reverse'&&ctx.hasHolo&&/\bholo(foil)?\b/.test(t)&&!/\b(reverse|rev|revs|stamp|stamped)\b/.test(t))return NO('regular holo, not the reverse');
   // promo numbers (SWSH050, BW74, SVP 085…) aren't written like 4/102, so check them here
   const promos=[...t.matchAll(/(?:^|[^a-z0-9])(swsh|svp|sm|xy|bw|hgss|dp|mep)\s?-?0*(\d{1,3})(?![0-9])/g)].map(m=>m[1]+(+m[2]));
   if(ctx.promo&&promos.length&&!promos.includes(ctx.promo))return NO('different promo number');
@@ -1591,7 +1593,7 @@ function filterEbay(items){
     num:wantNumber(),species:SPECIES_LC,setWords:setName.split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!/^(pokemon|japanese|black|star|promos?|series|collection)$/.test(w)),
     exEra:/^ex\d/i.test((card.set&&card.set.id)||''),jaOld:jaNoNum(),
     promo:(()=>{const pre={svp:'svp',smp:'sm',bwp:'bw',xyp:'xy',hgssp:'hgss',dpp:'dp',swshp:'swsh',mep:'mep'}[((card.set&&card.set.id)||'').toLowerCase()];const d=(card.localId||'').replace(/^[A-Z-]+/i,'');return pre&&/^\d+$/.test(d)?pre+(+d):''})(),
-    yr:yearWindow(),setLc:setName,psa:psaG(),setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
+    yr:yearWindow(),setLc:setName,psa:psaG(),hasHolo:prints.some(p=>p.type==='holo'),setPhrases:setPhraseRes(setName,(card&&card.localId)||''),jaCode:(!jpTwin&&card.lang==='ja'&&card.set&&parseJaSet(card.set.id||''))||''};
   const rel=r=>{WHY='';const s=relevance(r,ctx);return {r,s,why:WHY}};
   let scored=items.map(rel);
   // number typed without the set total (e.g. "008"): work out the total from the listings that are left.
