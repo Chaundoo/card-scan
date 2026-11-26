@@ -1113,7 +1113,8 @@ function ebayQuery(){
     parts.push('('+alts.join(',')+',promo)');
   }else parts.push(card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''));
   if(card.lang==='ja')parts.push('japanese');
-  if(p.type==='reverse')parts.push('reverse');
+  // reverse holos are also sold as "<set> stamp" / "stamped" / "rev holo": any of those words finds them
+  if(p.type==='reverse')parts.push('(reverse,rev,stamp,stamped)');
   if(p.stamps&&p.stamps.some(s=>/1st/i.test(s)))parts.push('1st edition');
   return parts.join(' ');
 }
@@ -1298,7 +1299,11 @@ function relevance(r,ctx){
   // version words only count outside set/subset names ("Radiant Collection", "Lost Origin", "Black Star Promo", your card's own set…)
   let tv=t;for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(tv))return NO('different version ('+v.toUpperCase()+')');
-  if(ctx.print.type!=='reverse'&&/\breverse\b/.test(t))return NO('reverse holo');
+  if(ctx.print.type!=='reverse'&&/\b(reverse|rev holo)\b/.test(t))return NO('reverse holo');
+  // stamped copies: for a reverse holo, "stamp"/"stamped" means the same card (e.g. "Kyogre Emerald Stamp");
+  // for a regular print with no stamp of its own, a stamped copy is a different print (prerelease, staff, set stamp…)
+  const stampy=/\b(stamp|stamped|prerelease|pre release|staff)\b/.test(t)&&!/\bno stamp\b/.test(t);
+  if(stampy&&ctx.print.type!=='reverse'&&!((ctx.print.stamps||[]).filter(x=>!/1st/i.test(x)).length))return NO('stamped copy (different print)');
   if(!ctx.first&&/\b1st\b|first edition/.test(t))return NO('1st edition');
   // wrong era: a year in the title far from when your card came out (e.g. "2021 … 25th Anniversary" for a 2008 card)
   if(ctx.yr){const ys=[...t.matchAll(/(?<![\d$.])(199[6-9]|20[0-3]\d)(?![\d.])/g)].map(m=>+m[1]);if(ys.length&&!ys.some(y=>y>=ctx.yr.lo&&y<=ctx.yr.hi))return NO('year in title is from a different print')}
@@ -1308,7 +1313,7 @@ function relevance(r,ctx){
   const code=parseJaSet(r.title);
   if(code){if(ctx.jaCode&&code.toLowerCase()!==ctx.jaCode.toLowerCase())return NO('different Japanese set');
     const era=jaCodeYears(code);if(!ctx.jaCode&&ctx.yr&&era&&(era[1]<ctx.yr.lo||era[0]>ctx.yr.hi))return NO('different Japanese set')}
-  let score=1;const nums=titleNums(r.title);
+  let score=1;const nums=titleNums(r.title);if(ctx.print.type==='reverse'&&(stampy||/\b(reverse|rev)\b/.test(t)))score+=1;
   if(ctx.num){const hit=nums.some(x=>x.n===ctx.num.n&&(!ctx.num.t||!x.t||x.t===ctx.num.t));
     if(nums.length&&!hit)return NO('different card number'); // different card number
     if(hit)score+=3}
