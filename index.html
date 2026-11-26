@@ -609,13 +609,13 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
       <ol class="steps">
         <li>Install the free <b>Userscripts</b> app from the App Store.</li>
         <li>Settings → Safari → Extensions → Userscripts → turn it on and set <b>All Websites</b> to Allow.</li>
-        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
+        <li>In Safari, open <a id="helper-link" href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a>, tap the <b>aA</b> / puzzle icon → Userscripts → <b>Install</b>.</li>
         <li>Use this site in a Safari tab, not as a home-screen app (extensions don't run in home-screen apps).</li>
       </ol>
       <h3 style="font-size:16px;margin-top:12px">Android</h3>
-      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a> and tap Install.</li></ol>
+      <ol class="steps"><li>Use <b>Firefox</b> and add the <b>Tampermonkey</b> add-on (Chrome on Android doesn't run extensions).</li><li>Open <a href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a> and tap Install.</li></ol>
       <h3 style="font-size:16px;margin-top:12px">Computer</h3>
-      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.2.2">the helper script</a> and click Install.</li></ol>
+      <ol class="steps"><li>Add <b>Tampermonkey</b> to Chrome, Edge or Firefox, then open <a href="chaundoo-scan-helper.user.js?v=1.3.0">the helper script</a> and click Install.</li></ol>
       <p class="note">No helper? Every source box also has a <b>Paste</b> option: open the page, select all, copy, and paste it in. The numbers come out the same.</p>
       <p class="note">If eBay shows a "verify you're human" check, do it yourself; the helper never touches those.</p>
     </div>
@@ -1089,6 +1089,7 @@ async function openCard(m){
   try{
     const c=await getJSON(API+m.lang+'/cards/'+encodeURIComponent(m.id));c.lang=m.lang;card=c;jpTwin=!!m.twin;if(!c.image&&m.image)c.image=m.image;
     enName=c.name;
+    if(m.lang==='ja'&&!(c.dexId&&c.dexId.length)){const t=await jaToEn(c.name);if(t)enName=t}
     if(m.lang==='ja'&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
     pushRecent({id:m.id,lang:m.lang,twin:!!m.twin,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
@@ -1119,12 +1120,25 @@ function buildPrints(c){
     if(tp)for(const k of Object.keys(tp))if(tp[k]&&typeof tp[k]==='object'&&'marketPrice' in tp[k])out.push({label:k.replace(/([A-Z])/g,' $1').replace(/^./,x=>x.toUpperCase()),type:/reverse/i.test(k)?'reverse':/holo/i.test(k)?'holo':'normal',stamps:/1st/i.test(k)?['1st Edition']:[],pid:tp[k].productId,tcg:tp[k],cm:c.pricing.cardmarket,updated:tp.updated});
     if(!out.length)out.push({label:'Standard',type:'normal',stamps:[],pid:null,tcg:null,cm:c.pricing&&c.pricing.cardmarket});
   }
-  return out;
+  // the card list sometimes repeats a printing; keep one of each, and tell apart same-name printings with different TCGplayer pages
+  const seen=new Map();const ded=[];for(const p of out){const k=p.label+'|'+(p.pid||'');if(seen.has(k))continue;seen.set(k,1);ded.push(p)}
+  ded.forEach((p,i)=>{const same=ded.filter(q=>q.label===p.label);if(same.length>1)p.label+=' ('+(same.indexOf(p)+1)+')'});
+  return ded;
 }
+// Japanese sets before e-card (1996 base through Neo) print no card number; the catalog's number is only an index
+// Japanese → English Pokémon names (all 1,025), for Japanese cards the catalog gives no Pokédex number
+let JA_NAMES=null;async function jaToEn(n){try{if(!JA_NAMES)JA_NAMES=await getJSON('ja_names.json');}catch{return ''}
+  const keys=Object.keys(JA_NAMES).sort((a,b)=>b.length-a.length);let rest=String(n||'');const out=[];
+  for(let guard=0;guard<4&&rest;guard++){const k=keys.find(k=>rest.startsWith(k));if(!k)break;out.push(JA_NAMES[k]);rest=rest.slice(k.length).replace(/^[&＆]/,'')}
+  if(!out.length)return '';const suf=(rest.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];return out.join(' & ')+(suf?' '+suf:'')}
+const JA_NONUM=/^(PMCG\d|neo\d|VS1|web1)$/i;
+const JA_OLD={PMCG1:'base',PMCG2:'jungle',PMCG3:'fossil',PMCG4:'rocket',PMCG5:'gym',PMCG6:'gym',neo1:'neo',neo2:'neo',neo3:'neo',neo4:'neo',VS1:'vs',web1:'web'};
+const jaNoNum=()=>!!(card&&!card.custom&&!jpTwin&&card.lang==='ja'&&card.set&&JA_NONUM.test(card.set.id||''));
 function ebayQuery(){
   const typedNum=($('#c-num')&&$('#c-num').value.trim())||'';
   if(card.custom)return card.name+(card.lang==='ja'&&!/japan/i.test(card.name)?' japanese':'')+(typedNum||card.localId?' '+(typedNum||card.localId):'');
   if(jpTwin)return [card.name,typedNum,'japanese'].filter(Boolean).join(' ');
+  if(jaNoNum())return [(enName||card.name).replace(/[δ★☆]/g,'').trim(),'japanese',JA_OLD[card.set.id]||'',typedNum].filter(Boolean).join(' ');
   const p=prints[pIdx]||{};
   // eBay needs every word in the title, so keep only words sellers actually type
   const nm=(enName||card.name).replace(/\b(with|the|of)\b/gi,' ').replace(/[-–]/g,' ').replace(/[δ★☆]/g,'').replace(/\s+/g,' ').trim();
@@ -1135,7 +1149,8 @@ function ebayQuery(){
     // promos only print the number (085, SWSH050, SM60), never a set total; sellers write it several ways
     const d=card.localId.replace(/^[A-Z-]+/i,'');const alts=[...new Set([card.localId,d,d&&String(+d)].filter(x=>x&&x!=='NaN'))];
     parts.push('('+alts.join(',')+',promo)');
-  }else parts.push(card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''));
+  }else{const lz=card.localId.match(/^([A-Z]+)0+(\d+)$/i); // H09 is printed H9: search either way
+    parts.push(lz?'('+card.localId+','+lz[1]+lz[2]+')':card.localId+(off&&/^\d+$/.test(card.localId)?'/'+off:''))}
   if(card.lang==='ja')parts.push('japanese');
   // reverse holos are also sold as "<set> stamp" / "stamped" / "rev holo": any of those words finds them
   if(p.type==='reverse')parts.push('(reverse,rev,stamp,stamped)');
@@ -1145,6 +1160,9 @@ function ebayQuery(){
 // TCGplayer search doesn't understand eBay's (a,b) "or" groups: plain words only.
 // Promos are titled "Giratina - BW74" there, so name + promo number finds the exact card; other cards: name + set.
 function tcgSearchWords(){const nm=(enName||card.name).replace(/[δ★☆]/g,'').trim();const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test((card.set&&card.set.id)||'');
+  // Japanese: TCGplayer titles read "Charizard ex - 201/165"; old sets with no printed number go by name only
+  if(card.lang==='ja'){if(jaNoNum()||!/^\d+$/.test(card.localId||''))return nm;const off=card.set&&card.set.cardCount&&card.set.cardCount.official;
+    return nm+' '+card.localId.padStart(3,'0')+(off?'/'+String(off).padStart(3,'0'):'')}
   return promo?nm+' '+card.localId:nm+(card.set&&card.set.name?' '+card.set.name.replace(/^(Pok[eé]mon|EX|SV|SWSH|SM|XY|BW)\s*[:-]?\s*/i,'').trim():'')}
 function links(){
   const p=prints[pIdx]||{};const q=$('#c-q').value.trim()||ebayQuery();
@@ -1230,13 +1248,14 @@ function renderSource(s){
 function timeAgo(t){const m=Math.round((Date.now()-t)/6e4);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' hr ago'}
 function readSource(s,url){
   const p=prints[pIdx]||{};
-  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+(jpTwin?' (Japanese)':' '+card.localId),productId:(jpTwin||card.custom)?null:(p.pid||null),pick:s==='tcg'&&!/\/product\//.test(url),cond},location.origin);
+  if(helperOn())window.postMessage({ccs:'pending',key:key(),source:s,url,label:card.name+(jpTwin?' (Japanese)':' '+card.localId),productId:(jpTwin||card.custom)?null:(p.pid||null),pick:s==='tcg'&&!/\/product\//.test(url),cond,num:(($('#c-num').value.trim().split('/')[0])||(jaNoNum()?'':card.localId)||'')},location.origin);
   else if(!sessionStorage.getItem('ccs.nohelper')){sessionStorage.setItem('ccs.nohelper','1');setTimeout(()=>alert('Helper not installed, so the page will just open. Copy the page and use Paste, or set up the helper on the Helper tab.'),50)}
   window.open(/ebay\.com/.test(url)?'go.html?u='+encodeURIComponent(url):url,'_blank','noopener');
 }
 function gotLive(k,s,payload){
   const cur=liveStore.get(k)||liveLoad(k)||{};if(cur[s]&&cur[s].at===payload.at)return;
   cur[s]=payload;liveStore.set(k,cur);liveSave(k,cur);
+  if(s==='tcg'&&k===key()&&card&&card.lang==='ja'&&/[^\x00-\x7f]/.test(enName||card.name)&&payload.title){const t=payload.title.split(' - ')[0].replace(/\s*\([^)]*\)\s*$/,'').trim();if(t&&!/[^\x00-\x7f]/.test(t)){enName=t;$('#c-q').value=ebayQuery();renderLinks()}}
   if(s==='tcg'&&k===key()&&card&&(jpTwin||card.custom)&&payload.number&&!$('#c-num').value.trim()){$('#c-num').value=payload.number;const all=ls.get('cnum',{});all[(jpTwin?'jt':card.lang)+':'+card.id]=payload.number;ls.set('cnum',all);$('#c-q').value=ebayQuery();renderLinks()}if(k===key()){live=cur;srcTab=s;renderSource(s);renderTabs();renderMath()}
 }
 window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const d=e.data;if(!d||d.ccs!=='result'||!d.payload)return;gotLive(d.key,d.source,d.payload)});
@@ -1246,23 +1265,30 @@ const condCode=t=>{t=(t||'').toUpperCase();if(/NEAR MINT|\bNM\b/.test(t))return'
 // TCGplayer rows say the printing too ("Lightly Played Reverse Holofoil"): keep only rows for the printing you picked
 // TCGplayer rows say the printing too ("Lightly Played Reverse Holofoil"). Keep the rows for the printing you picked,
 // but don't be strict where the catalog and TCGplayer disagree: promos marked "Normal" here are often "Holofoil" there.
-function rowType(t){t=String(t||'').toLowerCase();return /reverse/.test(t)?'reverse':/holo|foil/.test(t)?'holo':/\bnormal\b/.test(t)?'normal':''}
+// no printing word at all ("LP", "NM Unlimited") is TCGplayer's plain/normal printing
+function rowType(t){t=String(t||'').toLowerCase();return /reverse/.test(t)?'reverse':/holo|foil/.test(t)?'holo':'normal'}
 function printOK(text){const t=String(text||'').toLowerCase();const rt=rowType(t);const p=prints[pIdx]||{};
   if(prints.length<=1)return true;
   if(rt){const types=new Set(prints.map(x=>x.type));const want=p.type==='reverse'?'reverse':(types.has('holo')&&types.has('normal'))?p.type:'base';
     const got=rt==='reverse'?'reverse':want==='base'?'base':rt;if(got!==want)return false}
   const pf=(p.stamps||[]).some(x=>/1st/i.test(x));if(/1st|unlimited/.test(t)&&/1st/.test(t)!==pf)return false;return true}
-function tcgRows(d){const all=(d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0);const f=all.filter(r=>printOK(r.cond+' '+(r.note||'')));
-  d._printAll=!f.length&&all.length>0;return d._printAll?all:f}
+// TCGplayer sales: drop graded copies sold through the raw listing ("PSA 6" in the note) and prices far off the rest
+const TCG_GRADED=/\b(psa|bgs|cgc|sgc|beckett|graded|slab)\b/i;
+function trimOutliers(rows){const by={};rows.forEach(r=>(by[r.cc]=by[r.cc]||[]).push(r));const out=[];
+  for(const k of Object.keys(by)){const g=by[k];const md=g.length>=3?median(g.map(r=>r.price)):null;
+    for(const r of g){if(md&&(r.price<md*.35||r.price>md*3)){r.out='price far off the other '+k+' sales';continue}out.push(r)}}
+  return rows.filter(r=>out.includes(r))}
+function tcgRows(d){const all=(d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0&&!TCG_GRADED.test(r.note||''));const f=all.filter(r=>printOK(r.cond+' '+(r.note||'')));
+  d._printAll=!f.length&&all.length>0;return trimOutliers(d._printAll?all:f)}
 function tcgLists(d){const all=(d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0);const f=all.filter(r=>printOK(r.cond));return f.length||!all.length?f:all}
 function tcgTable(d){
-  const rows=tcgRows(d),lst=tcgLists(d),other=(d.sales||[]).length-rows.length;let h='';
+  const rows=tcgRows(d),lst=tcgLists(d),graded=(d.sales||[]).filter(r=>TCG_GRADED.test(r.note||'')).length,other=(d.sales||[]).length-rows.length-graded;let h='';
   if(d._printAll)h+=`<p class="msg info" style="margin:0 0 8px">TCGplayer lists these sales as a different printing (${esc([...new Set(rows.map(r=>rowType(r.cond)).filter(Boolean))].join(', ')||'other')}) than the one picked above, so all of them are shown. Switch Printing if one fits better.</p>`;
   const C=['NM','LP','MP','HP','DMG'];
-  h+=`<table class="t ctable"><tr><th>Condition</th><th class="r">Sales</th><th class="r">Median sold</th><th class="r">Last sold</th><th class="r">Cheapest listed</th></tr>${C.map(c=>{
+  h+=`<table class="t ctable"><tr><th>Condition</th><th class="r">Sales</th><th class="r">Median sold</th><th class="r">Last sold</th><th class="r">Cheapest seen</th></tr>${C.map(c=>{
     const rs=rows.filter(r=>r.cc===c),ls_=lst.filter(r=>r.cc===c);const md=median(rs.map(r=>r.price));const lo=ls_.length?Math.min(...ls_.map(r=>r.price+(r.ship||0))):null;
     return `<tr data-cc="${c}" class="${c===cond?'sel':''}"><td class="c"><b>${c}</b></td><td class="r">${rs.length||'—'}</td><td class="r"><b>${md!=null?money(md):'—'}</b></td><td class="r">${rs.length?money(rs[0].price)+`<div class="sub">${esc(rs[0].date)}</div>`:'—'}</td><td class="r">${lo!=null?money(lo):'—'}</td></tr>`}).join('')}</table>
-    <p class="note">Tap a condition to use it in the math. ${esc((prints[pIdx]||{}).label||'')} only${other>0?` (${other} sale${other===1?'':'s'} of other printings left out)`:''}.</p>`;
+    <p class="note">Tap a condition to use it in the math. ${esc((prints[pIdx]||{}).label||'')} only${other>0?` (${other} sale${other===1?'':'s'} of other printings or far-off prices left out)`:''}${graded?`; ${graded} graded cop${graded===1?'y':'ies'} sold as raw left out`:''}. TCGplayer only shows its 10 cheapest listings, so “Cheapest seen” mostly fills in for played copies.</p>`;
   if(rows.length)h+=`<details style="margin-top:8px"><summary>All ${rows.length} sales</summary><table class="t" style="margin-top:6px"><tr><th>Date</th><th>Cond</th><th class="r">Qty</th><th class="r">Price</th><th></th></tr>${rows.map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.date)}</td><td>${esc(r.cond)}${r.note?`<div class="sub">${esc(r.note)}</div>`:''}</td><td class="r">${esc(r.qty||1)}</td><td class="r"><b>${money(r.price)}</b></td><td>${pinBtn('tcg',{title:'TCGplayer '+r.cond+(r.note?' – '+r.note:''),price:r.price,date:r.date,cond:r.cond,url:(live.tcg&&live.tcg.url)||''})}</td></tr>`).join('')}</table></details>`;
   else h+='<p class="note">No sales for this printing came through. Tap Read again once the TCGplayer page has fully loaded, or check the printing above.</p>';
   if(lst.length)h+=`<details style="margin-top:8px"><summary>${lst.length} listings on the page</summary><table class="t" style="margin-top:6px"><tr><th>Cond</th><th>Seller</th><th class="r">Price + ship</th></tr>${lst.slice().sort((a,b)=>(a.price+(a.ship||0))-(b.price+(b.ship||0))).map(r=>`<tr class="${r.cc&&r.cc!==cond?'dim':''}"><td>${esc(r.cond)}</td><td class="sub">${esc(r.seller||'')}</td><td class="r"><b>${money(r.price+(r.ship||0))}</b></td></tr>`).join('')}</table></details>`;
@@ -1321,6 +1347,7 @@ function wantNumber(){
   if(m){n=m[1];t=m[2]||''}
   else if((jpTwin||card.custom)&&live.tcg&&live.tcg.number){const k=String(live.tcg.number).match(/([A-Za-z-]*\d{1,3})\s*(?:\/\s*([A-Za-z-]*\d{1,3}))?/);if(k){n=k[1];t=k[2]||''}}
   else if((jpTwin||card.custom)&&lastRead.num){n=lastRead.num;t=/^\d+$/.test(lastRead.total||'')?lastRead.total:''}
+  else if(jaNoNum())return null;
   else if(!jpTwin&&!card.custom&&card.localId){n=card.localId;const off=card.set&&card.set.cardCount&&card.set.cardCount.official;t=/^\d+$/.test(card.localId)&&off?String(off):''}
   return n?{n:normNum(n),t:t?normNum(t):''}:null}
 // the year the card's set came out (TCGdex set page), kept on this phone so it's only fetched once per set
@@ -1657,7 +1684,7 @@ $('#recent-clear').addEventListener('click',()=>{ls.set('recent',[]);ls.set('liv
 
 /* ---------- helper status ---------- */
 function renderHelper(){const v=document.documentElement.dataset.ccsHelper;
-  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.2.2'?' <b>An update (v1.2.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.2.2&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
+  $('#helper-status').innerHTML=v?`<div class="msg good">Helper is installed (v${esc(v)}). Open &amp; read will pull live comps.${v<'1.3.0'?' <b>An update (v1.2.2) is available.</b> <a href="chaundoo-scan-helper.user.js?v=1.3.0&t='+Date.now()+'" style="color:inherit;font-weight:800">Tap here to get it</a>, then Userscripts → Install. Check the page says @version 1.2.2 first.':''}</div>`:'<div class="msg bad">Helper not detected in this browser. Set it up below, or use Paste on each source.</div>';
   $('#helper-dot').hidden=!!v}
 setTimeout(()=>$('#helper-dot').hidden=helperOn(),1500);
 getSets(S.lang).catch(()=>{});

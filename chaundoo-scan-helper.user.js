@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Chaundoo Card Scan Helper
 // @namespace    https://chaundoo.github.io/card-scan/
-// @version      1.2.2
+// @version      1.3.0
 // @updateURL    https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @downloadURL  https://chaundoo.github.io/card-scan/chaundoo-scan-helper.user.js
 // @description  Reads the TCGplayer / eBay page you open from Chaundoo Card Scan and sends the sales and listings back to it. Nothing leaves your browser.
@@ -18,7 +18,7 @@
 // ==/UserScript==
 (function () {
   'use strict';
-  const VER = '1.2.2';
+  const VER = '1.3.0';
   const hasGM4 = typeof GM !== 'undefined' && GM && GM.getValue;
   const get = (k, d) => hasGM4 ? GM.getValue(k, d) : Promise.resolve(GM_getValue(k, d));
   const set = (k, v) => hasGM4 ? GM.setValue(k, v) : Promise.resolve(GM_setValue(k, v));
@@ -46,7 +46,7 @@
       if (e.origin !== location.origin) return;
       const d = e.data || {};
       if (d.ccs === 'pending') {
-        await set('pending_' + d.source, { key: d.key, url: d.url, label: d.label, productId: d.productId, cond: d.cond, at: Date.now() });
+        await set('pending_' + d.source, { key: d.key, url: d.url, label: d.label, productId: d.productId, cond: d.cond, num: d.num || '', at: Date.now() });
       } else if (d.ccs === 'poll') {
         Object.keys(delivered).forEach(k => delete delivered[k]);
         deliver(d.key);
@@ -92,7 +92,8 @@
     const bodyT = document.body.innerText || '';
     const nm = bodyT.match(/Card Number[^:]*:\s*([A-Za-z-]*\d+(?:\s*\/\s*[A-Za-z-]*\d+)?)/i);
     const h1 = txt(document.querySelector('h1'));
-    const extra = { number: nm ? nm[1].replace(/\s/g, '') : '', title: h1, setName: h1.includes(' - ') ? h1.split(' - ').slice(1).join(' - ').replace(/\s*\([^)]*\)\s*$/, '') : '' };
+    const hn = h1.match(/(?:^|\s-\s)([A-Za-z]{0,4}\d{1,3}\/[A-Za-z]{0,4}\d{1,3})(?:\s|$)/); // Japanese pages: number only in the title
+    const extra = { number: nm ? nm[1].replace(/\s/g, '') : (hn ? hn[1] : ''), title: h1, setName: h1.includes(' - ') ? h1.split(' - ').slice(1).join(' - ').replace(/\s*\([^)]*\)\s*$/, '') : '' };
     const out = { market: rowVal(pts, 'Market Price'), recent: rowVal(pts, 'Most Recent Sale'), condLabel: txt(document.querySelector('.price-guide__points-condition')), sales: [], listings: [], ...extra };
     // open the sales history snapshot (same as tapping "View More Data")
     let rowsEl = document.querySelector('.latest-sales-table__tbody tr');
@@ -161,6 +162,17 @@
   const run = () => (onSearch() ? Promise.resolve(status('Tap your card in the results. I\'ll read it on its page.')) : isTcg ? readTcg() : readEbay()).catch(e => status('Error: ' + e.message));
   box.querySelector('[data-go]').onclick = run;
 
+  // TCGplayer search page: open the result whose number matches the card (or the only result)
+  async function pickResult(num) {
+    await waitFor('.search-result, .blank-slate, .search-results__no-results', 12000); await sleep(1200);
+    const res = [...document.querySelectorAll('.search-result')].map(el => ({ el, t: txt(el), a: el.querySelector('a[href*="/product/"]') })).filter(x => x.a);
+    if (!res.length) return null;
+    const norm = n => String(n || '').toUpperCase().replace(/^([A-Z-]*)0*(\d)/, '$1$2');
+    if (num) { const want = norm(num); const hit = res.filter(x => (x.t.match(/#\s*([A-Za-z-]*\d+)/g) || []).some(h => norm(h.replace(/#\s*/, '')) === want));
+      if (hit.length === 1) return hit[0].a.href; }
+    return res.length === 1 ? res[0].a.href : null;
+  }
+
   // Auto-read when this tab was opened from Card Scan in the last 15 minutes
   let readFor = '';
   async function autoRead() {
@@ -169,7 +181,12 @@
     const go = box.querySelector('[data-go]');
     if (go) go.style.display = '';
     if (!p || Date.now() - p.at > PENDING_MAX) { status('Chaundoo Scan: tap to read'); return; }
-    if (onSearch()) { status('Tap your card in these results. I\'ll read it on its page' + (p.label ? ' (' + p.label + ')' : '') + '.'); if (go) go.style.display = 'none'; return; }
+    if (onSearch()) {
+      status('Looking for your card in these results…'); if (go) go.style.display = 'none';
+      const pick = await pickResult(p.num);
+      if (pick) { status('Found it, opening ' + (p.label || 'your card') + '…'); location.href = pick; return; }
+      status('Tap your card in these results. I\'ll read it on its page' + (p.label ? ' (' + p.label + ')' : '') + '.'); return;
+    }
     if (isTcg && p.productId && !here.includes('/product/' + p.productId)) { status('Different product than Card Scan picked. Tap to read anyway.'); return; }
     if (readFor === here) return; readFor = here;
     status('Linked to ' + (p.label || 'card') + '…');
