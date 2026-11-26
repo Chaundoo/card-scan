@@ -656,7 +656,9 @@ function applyLayout(l){const h=document.documentElement;h.classList.toggle('pho
   const cv=$('#card-view');if(cv){let L=$('#cv-left'),R=$('#cv-right');
     if(l!=='phone'){if(!L){L=document.createElement('div');L.id='cv-left';R=document.createElement('div');R.id='cv-right';
         [...cv.children].forEach(el=>(el.classList.contains('src')?R:L).appendChild(el));cv.append(L,R)}cv.classList.add('cols')}
-    else if(L){[...L.children,...R.children].forEach(el=>cv.appendChild(el));L.remove();R.remove();cv.classList.remove('cols')}}
+    else if(L){[...L.children,...R.children].forEach(el=>cv.appendChild(el));L.remove();R.remove();cv.classList.remove('cols')}
+    // phone: card, then Live comps, then the math
+    if(l==='phone')['.chead','#comps','#math-panel','#pins-panel','#cfz-panel'].forEach(q=>{const el=cv.querySelector(q);if(el)cv.appendChild(el)})}
   window.dispatchEvent(new Event('resize'))}
 function applyTheme(t){document.documentElement.dataset.theme=t;$$('#theme-seg button').forEach(b=>b.classList.toggle('on',b.dataset.theme===t));
   const m=document.querySelector('meta[name=theme-color]');if(m)m.content=THEME_BG[t]||THEME_BG.normal}
@@ -1522,7 +1524,7 @@ function renderMath(){
   let mv=null,est=false;
   if(parts.length){const W=parts.reduce((a,b)=>a+b.w,0);mv=parts.reduce((a,b)=>a+b.v*b.w,0)/W}
   const el=$('#math');
-  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need live comps</h3><p class="note">Read TCGplayer or eBay last sold in Live comps above and the buy and flip numbers fill in here. '+(live.tcg&&!ts.length?'TCGplayer has no '+cond+' sales for this printing, so pick another condition or read eBay.':'')+'</p></div>';return}
+  if(mv==null){el.innerHTML='<div class="verdict na"><h3>Need live comps</h3><p class="note">Read TCGplayer or eBay last sold in Live comps and the buy and flip numbers fill in here. '+(live.tcg&&!ts.length?'TCGplayer has no '+cond+' sales for this printing, so pick another condition or read eBay.':'')+'</p></div>';return}
   if(low!=null&&low<mv*.9)notes.push(['warn',`Cheapest eBay listing is ${money(low)}, under the comp value. Buyers can get it cheaper, so don't count on the top number.`]);
   lastMV=mv;const vendorExit=mv*S.vendor/100;
   const ebayNet=mv*(1-S.fee/100)-.4-S.ship;
