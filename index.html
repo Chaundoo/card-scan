@@ -338,6 +338,13 @@ a{color:inherit}
 html.phone .sw-nav{display:none}
 .sw-hint{position:absolute;right:12px;bottom:calc(150px + env(safe-area-inset-bottom));font:600 11.5px system-ui;opacity:.6;text-align:right}
 .viewseg{margin:0 0 8px}
+.sw-rail{position:absolute;right:10px;bottom:calc(190px + env(safe-area-inset-bottom));z-index:3;display:flex;flex-direction:column;align-items:center;gap:4px}
+.sw-rail button{border:0;width:46px;height:46px;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font:700 20px system-ui;display:flex;align-items:center;justify-content:center}
+.sw-rail span{font:700 10.5px system-ui;text-shadow:0 1px 3px #000}
+#sw.clear .sw-info,#sw.clear .sw-msg,#sw.clear .sw-nav,#sw.clear .sw-top .seg,#sw.clear .sw-top .cnt{display:none}
+#sw.clear .sw-top{background:transparent}
+#sw.clear .sw-rail{bottom:calc(28px + env(safe-area-inset-bottom))}
+.sw-strip img{cursor:pointer}
 .gradebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 #kind-seg button{padding:7px 14px}
 #grade-seg{display:grid;grid-template-columns:repeat(10,1fr);width:100%}
@@ -623,6 +630,7 @@ html.phone #v-log .logbar .btn{flex:1 1 auto}
   <div id="sw" hidden role="dialog" aria-label="Sold listings slideshow">
     <div class="sw-top"><div class="seg" id="sw-sort"><button data-o="recent">Most recent</button><button data-o="high">Highest</button><button data-o="low">Lowest</button></div><span class="cnt" id="sw-cnt"></span><button class="sw-x" id="sw-x" aria-label="Close">×</button></div>
     <div class="sw-feed" id="sw-feed"></div>
+    <div class="sw-rail"><button id="sw-clear" aria-label="Clear display">⤢</button><span id="sw-clear-l">Clear</span></div>
   </div>
 
   <!-- RECENT -->
@@ -1402,7 +1410,9 @@ const swTot=r=>r.price+(r.ship||0);
 function swSorted(){const a=SW.list.slice();const t=r=>{const d=new Date(r.date);return isNaN(d)?0:+d};
   if(SW.order==='high')a.sort((x,y)=>swTot(y)-swTot(x));else if(SW.order==='low')a.sort((x,y)=>swTot(x)-swTot(y));else a.sort((x,y)=>t(y)-t(x));return a}
 function swOpen(){const d=live.ebaySold;if(!d||!d.items)return;SW.list=filterEbay(d.items).list;if(!SW.list.length)return;
-  $('#sw').hidden=false;document.documentElement.style.overflow='hidden';swRender(0)}
+  $('#sw').hidden=false;document.documentElement.style.overflow='hidden';swSetClear(!!ls.get('swClear',false));swRender(0)}
+// clear display: hides the title, price and buttons so the whole card shows; tap the photo or the side button to switch
+function swSetClear(on){SW.clear=on;ls.set('swClear',on);$('#sw').classList.toggle('clear',on);$('#sw-clear').textContent=on?'☰':'⤢';$('#sw-clear-l').textContent=on?'Show info':'Clear';$('#sw-clear').setAttribute('aria-label',on?'Show info':'Clear display')}
 function swClose(){$('#sw').hidden=true;document.documentElement.style.overflow='';if(SW.obs)SW.obs.disconnect()}
 function swImgs(r){const got=SW.photos.get(r.url);if(got&&got.length)return got;return r.img?[hiImg(r.img)]:[]}
 function swSlide(r,i){const imgs=swImgs(r);const f=filterEbay(live.ebaySold.items);const out=!f.set.has(r);const id=ovId(r);
@@ -1445,6 +1455,7 @@ window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const
 document.addEventListener('click',e=>{
   if(e.target.closest('[data-sw="open"]')){e.preventDefault();swOpen();return}
   if(e.target.closest('#sw-x')){swClose();return}
+  if(e.target.closest('#sw-clear')||e.target.closest('.sw-strip img')){swSetClear(!SW.clear);return}
   const o=e.target.closest('#sw-sort button');if(o){SW.order=o.dataset.o;ls.set('swOrder',SW.order);swRender(0);return}
   const n=e.target.closest('[data-nav]');if(n){const st=n.closest('.sw-slide').querySelector('.sw-strip');st.scrollBy({left:+n.dataset.nav*st.clientWidth,behavior:'smooth'});return}
   const v=e.target.closest('[data-swov]');if(v){setOv(v.dataset.swov,v.dataset.v||null);const at=SW.cur;swRender(at);return}});
