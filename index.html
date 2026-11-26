@@ -1017,7 +1017,8 @@ async function search(lang,name,num,total){
       if(/^\d+$/.test(total))ids.push(...sets.filter(s=>s.cardCount&&(s.cardCount.official==+total||s.cardCount.total==+total)).map(s=>s.id));
     }
     ids=[...new Set(ids)].slice(0,30);
-    const res=await Promise.all(ids.map(id=>tryCard(id,num)));res.forEach(add);
+    // promo sets number their cards two ways: SWSH050 keeps the letters, SVP 085 / SM 60 / BW 74 don't
+    const res=await Promise.all(ids.map(async id=>(await tryCard(id,num))||(pm&&id===PROMO[pm[1]]?await tryCard(id,pm[2]):null)));res.forEach(add);
   }
   const base=name?name.replace(/[\s-]*(ex|gx|v|vmax|vstar|v-union|break|lv\.?\s?x|prime)$/i,'').trim():'';
   const nameHit=()=>[...found.values()].some(c=>score(c.name,name)>0);
