@@ -1141,10 +1141,14 @@ function ebayQuery(){
   if(p.stamps&&p.stamps.some(s=>/1st/i.test(s)))parts.push('1st edition');
   return parts.join(' ');
 }
+// TCGplayer search doesn't understand eBay's (a,b) "or" groups: plain words only.
+// Promos are titled "Giratina - BW74" there, so name + promo number finds the exact card; other cards: name + set.
+function tcgSearchWords(){const nm=(enName||card.name).replace(/[δ★☆]/g,'').trim();const promo=/promo/i.test((card.set&&card.set.name)||'')||/p$/i.test((card.set&&card.set.id)||'');
+  return promo?nm+' '+card.localId:nm+(card.set&&card.set.name?' '+card.set.name.replace(/^(Pok[eé]mon|EX|SV|SWSH|SM|XY|BW)\s*[:-]?\s*/i,'').trim():'')}
 function links(){
   const p=prints[pIdx]||{};const q=$('#c-q').value.trim()||ebayQuery();
   const ex=' -psa -bgs -cgc -sgc -graded -lot';
-  const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name+(lastRead.num&&/^\d+$/.test(lastRead.num)?' '+lastRead.num.padStart(3,'0'):'')):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(q);
+  const tcg=card.custom?'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(card.name):jpTwin?'https://www.tcgplayer.com/search/pokemon-japan/product?q='+encodeURIComponent(card.name+(lastRead.num&&/^\d+$/.test(lastRead.num)?' '+lastRead.num.padStart(3,'0'):'')):p.pid?'https://www.tcgplayer.com/product/'+p.pid+(card.lang==='ja'?'?Language=Japanese':'?Language=English'):'https://www.tcgplayer.com/search/'+(card.lang==='ja'?'pokemon-japan':'pokemon')+'/product?q='+encodeURIComponent(tcgSearchWords());
   return {
     tcg,
     ebaySold:'https://www.ebay.com/sch/i.html?_nkw='+encodeURIComponent(q+ex)+'&_sacat=183454&LH_Sold=1&LH_Complete=1&_sop=13&ul_noapp=1#ul_noapp',
@@ -1239,14 +1243,20 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&helperOn(
 
 const condCode=t=>{t=(t||'').toUpperCase();if(/NEAR MINT|\bNM\b/.test(t))return'NM';if(/LIGHTLY|\bLP\b/.test(t))return'LP';if(/MODERATELY|\bMP\b/.test(t))return'MP';if(/HEAVILY|\bHP\b/.test(t))return'HP';if(/DAMAGED|\bDMG\b/.test(t))return'DMG';return''};
 // TCGplayer rows say the printing too ("Lightly Played Reverse Holofoil"): keep only rows for the printing you picked
-function printOK(text){const t=String(text||'').toLowerCase();if(!/holo|foil|normal|reverse|1st|unlimited/.test(t))return true;
-  const p=prints[pIdx]||{};const rev=/reverse/.test(t);if((p.type==='reverse')!==rev)return false;
-  if(p.type==='holo'&&/\bnormal\b/.test(t))return false;if(p.type==='normal'&&/holo|foil/.test(t))return false;
+// TCGplayer rows say the printing too ("Lightly Played Reverse Holofoil"). Keep the rows for the printing you picked,
+// but don't be strict where the catalog and TCGplayer disagree: promos marked "Normal" here are often "Holofoil" there.
+function rowType(t){t=String(t||'').toLowerCase();return /reverse/.test(t)?'reverse':/holo|foil/.test(t)?'holo':/\bnormal\b/.test(t)?'normal':''}
+function printOK(text){const t=String(text||'').toLowerCase();const rt=rowType(t);const p=prints[pIdx]||{};
+  if(prints.length<=1)return true;
+  if(rt){const types=new Set(prints.map(x=>x.type));const want=p.type==='reverse'?'reverse':(types.has('holo')&&types.has('normal'))?p.type:'base';
+    const got=rt==='reverse'?'reverse':want==='base'?'base':rt;if(got!==want)return false}
   const pf=(p.stamps||[]).some(x=>/1st/i.test(x));if(/1st|unlimited/.test(t)&&/1st/.test(t)!==pf)return false;return true}
-function tcgRows(d){return (d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0&&printOK(r.cond+' '+(r.note||'')))}
-function tcgLists(d){return (d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0&&printOK(r.cond))}
+function tcgRows(d){const all=(d.sales||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0);const f=all.filter(r=>printOK(r.cond+' '+(r.note||'')));
+  d._printAll=!f.length&&all.length>0;return d._printAll?all:f}
+function tcgLists(d){const all=(d.listings||[]).map(r=>({...r,cc:r.cc||condCode(r.cond)})).filter(r=>r.price>0);const f=all.filter(r=>printOK(r.cond));return f.length||!all.length?f:all}
 function tcgTable(d){
   const rows=tcgRows(d),lst=tcgLists(d),other=(d.sales||[]).length-rows.length;let h='';
+  if(d._printAll)h+=`<p class="msg info" style="margin:0 0 8px">TCGplayer lists these sales as a different printing (${esc([...new Set(rows.map(r=>rowType(r.cond)).filter(Boolean))].join(', ')||'other')}) than the one picked above, so all of them are shown. Switch Printing if one fits better.</p>`;
   const C=['NM','LP','MP','HP','DMG'];
   h+=`<table class="t ctable"><tr><th>Condition</th><th class="r">Sales</th><th class="r">Median sold</th><th class="r">Last sold</th><th class="r">Cheapest listed</th></tr>${C.map(c=>{
     const rs=rows.filter(r=>r.cc===c),ls_=lst.filter(r=>r.cc===c);const md=median(rs.map(r=>r.price));const lo=ls_.length?Math.min(...ls_.map(r=>r.price+(r.ship||0))):null;
