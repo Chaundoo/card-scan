@@ -1090,7 +1090,7 @@ async function openCard(m){
     const c=await getJSON(API+m.lang+'/cards/'+encodeURIComponent(m.id));c.lang=m.lang;card=c;jpTwin=!!m.twin;if(!c.image&&m.image)c.image=m.image;
     enName=c.name;
     if(m.lang==='ja'&&!(c.dexId&&c.dexId.length)){const t=await jaToEn(c.name);if(t)enName=t}
-    if(m.lang==='ja'&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
+    if(m.lang==='ja'&&c.dexId&&c.dexId.length){try{const e=await getJSON(API+'en/cards?dexId=eq:'+c.dexId[0]+'&pagination:itemsPerPage=1');if(e[0]){const base=e[0].name.replace(/\s+(ex|EX|GX|V|VMAX|VSTAR|V-UNION|δ|LV\.X|BREAK)$/,'');const suf=(c.name.match(/(ex|EX|GX|VMAX|VSTAR|V-UNION|V|BREAK)$/)||[''])[0];enName=base+(suf?' '+suf:'')}}catch{}}
     prints=buildPrints(c);pIdx=0;cond='LP';$('#c-sticker').value='';
     pushRecent({id:m.id,lang:m.lang,twin:!!m.twin,name:c.name,image:c.image,setName:c.set&&c.set.name,localId:c.localId,official:c.set&&c.set.cardCount&&c.set.cardCount.official});
     renderCard();
@@ -1383,8 +1383,9 @@ function relevance(r,ctx){
   const saysJp=/\b(japanese|japan|jpn)\b|日本/.test(t);
   // variants the card doesn't have (V, VSTAR, LV.X, Origin Forme, ex...)
   // version words only count outside set/subset names ("Radiant Collection", "Lost Origin", "Black Star Promo", your card's own set…)
-  let tv=t;for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
+  let tv=t;
   if(ctx.exEra)tv=tv.replace(/(^|[^a-z0-9])ex (ruby|sapphire|sandstorm|dragon|team|hidden|fire ?red|leaf ?green|deoxys|emerald|unseen|delta|legend|holon|crystal|power|series|era)(?![a-z])/g,' ');
+  for(const re of ctx.setPhrases)tv=tv.replace(re,' ');
   for(const v of VARIANT)if(!ctx.nameTokens.has(v)&&new RegExp('(^|[^a-z0-9])'+v.replace('.','\\.')+'(?![a-z0-9])').test(tv))return NO('different version ('+v.toUpperCase()+')');
   if(ctx.print.type!=='reverse'&&/\b(reverse|rev holo)\b/.test(t))return NO('reverse holo');
   if(ctx.print.type==='holo'&&/\bnon[ -]?holo\b/.test(t))return NO('non-holo version');
