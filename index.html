@@ -1462,7 +1462,7 @@ window.addEventListener('message',e=>{if(e.origin!==location.origin)return;const
   // add the extra photos behind the one already showing (no reload, no flash)
   const imgs=(d.imgs||[]).slice(0,12);if(imgs.length<2)return;const st=el.querySelector('.sw-strip');const have=st.querySelectorAll('img').length;
   const pid=u=>(String(u).match(/\/g\/([^/]+)\//)||[])[1];const first=st.querySelector('img');
-  const rest=imgs.filter(u=>!first||pid(u)!==pid(first.dataset.hi));
+  const had=new Set([...st.querySelectorAll('img')].map(x=>pid(x.dataset.hi)));const rest=imgs.filter(u=>!had.has(pid(u)));if(!rest.length)return;
   if(first&&pid(first.dataset.hi)!==pid(imgs[0])){/* the thumbnail is the first gallery photo almost always; if not, keep it first anyway */}
   st.insertAdjacentHTML('beforeend',rest.map((u,j)=>swImgTag(u,have+j,'')).join(''));
   const n=st.querySelectorAll('img').length;el.querySelector('.sw-dots').innerHTML=Array.from({length:n},(_,j)=>`<i class="${j?'':'on'}"></i>`).join('');
